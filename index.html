@@ -247,7 +247,7 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
 .stseg{position:relative;z-index:1;display:flex;width:100%;margin-top:22px}
 .stseg button{flex:1;justify-content:center}
 .stseg button.on{color:var(--kc)}
-.review{width:100%;min-height:84px;resize:none;overflow:hidden;background:var(--field);border:none;border-radius:12px;padding:12px 14px;font-size:14.5px;line-height:1.6;resize:vertical;outline:none}
+.review{width:100%;min-height:84px;resize:none;overflow:hidden;background:var(--field);border:none;border-radius:12px;padding:12px 14px;font-size:14.5px;line-height:1.6;outline:none}
 #rev{min-height:150px}
 .review::placeholder{color:var(--text-3)}
 .review:focus,.tin:focus,.field input:focus,.field textarea:focus{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 60%,transparent)}
@@ -285,11 +285,20 @@ input[type=date].tin{flex:none;min-height:36px}
 .dlg.show.nudge{animation:nudge .26s ease}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .segs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.covers{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:12px 10px;margin-top:10px}
-.covers button{text-align:left}
-.covers img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:6px;display:block;background:var(--sunken);box-shadow:var(--sh-1)}
-.covers small{font-size:11px;color:var(--text-2);line-height:1.3;margin-top:4px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.covers button.on img{box-shadow:0 0 0 2.5px var(--accent)}
+.ac{position:relative}
+.sugg{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;background:var(--elev);border:.5px solid var(--sep-2);border-radius:14px;
+  box-shadow:var(--sh-2);padding:5px;max-height:340px;overflow-y:auto;display:none}
+.sugg.open{display:block}
+.sg{display:flex;align-items:center;gap:11px;width:100%;padding:7px 8px;border-radius:10px;text-align:left}
+.sg:hover,.sg.on{background:var(--chip)}
+.sg .cover{width:30px;flex:none;aspect-ratio:2/3;border-radius:4px}
+.sg img.sgc{width:30px;height:45px;object-fit:cover;border-radius:4px;flex:none;background:var(--sunken)}
+.sg .sgm{min-width:0;flex:1}
+.sg b{display:block;font-size:14px;font-weight:620;letter-spacing:-.015em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sg small{display:block;font-size:12px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sgmsg{padding:9px 10px;font-size:13px;color:var(--text-2)}
+.linkbtn{color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.acnote{margin:-5px 0 12px}
 .cvprev{width:30px;height:45px;border-radius:4px;object-fit:cover;flex:none;background:var(--sunken)}
 .spin{width:15px;height:15px;border:2px solid var(--sep-2);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;display:inline-block;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -395,6 +404,9 @@ input[type=date].tin{flex:none;min-height:36px}
         <button data-act="history">저장소 이력에서 되돌리기</button>
         <button data-act="forcepull">저장소에서 다시 받기</button>
         <button data-act="ghcfg">GitHub 연결 설정…</button>
+        <div class="div"></div>
+        <div class="lab">작품 검색</div>
+        <button data-act="search">검색 키 설정…</button>
       </div>
     </div>
   </div>
@@ -461,6 +473,7 @@ const KINDS = {
            endDate: "끝낸 날",    verb: "하", where: ["플랫폼", "플랫폼", "플랫폼"] }
 };
 const KIND_IDS = Object.keys(KINDS);
+const isScreen = (k) => k === "movie" || k === "drama";
 const STATUSES = ["wish", "doing", "done"];
 const FAMS = {
   books:  { kinds: ["book"],           title: "도서",       unit: "권", past: "읽었습니다",  doing: "읽는 중" },
@@ -963,47 +976,65 @@ function bindRangePair(rng, num, get, onChange) {
   num.addEventListener("blur", () => { num.value = isNum(get()) ? fmt(get()) : ""; });
 }
 
-/* ==================== 표지 찾기 (iTunes) ====================
-   애플 검색 API로 책·영화·드라마 표지 후보를 받는다. 게임은 애플에 없어서 주소를 직접 넣는다. */
-function jsonp(url) {
-  return new Promise((res, rej) => {
-    const cb = "cb_" + Math.random().toString(36).slice(2);
-    const s = document.createElement("script");
-    const timer = setTimeout(() => { cleanup(); rej(new Error("timeout")); }, 9000);
-    function cleanup() { clearTimeout(timer); delete window[cb]; s.remove(); }
-    window[cb] = (d) => { cleanup(); res(d); };
-    s.onerror = () => { cleanup(); rej(new Error("network")); };
-    s.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb;
-    document.head.appendChild(s);
-  });
+/* ==================== 작품 검색 (자동 완성) ====================
+   제목을 치면 저자·감독·연도·표지 후보를 띄운다.
+   - 도서: 카카오 책 검색(REST API 키). 키가 없으면 Google Books를 키 없이 시도한다(막히는 일이 잦다).
+   - 영화·드라마: TMDB(API 키 또는 읽기 액세스 토큰).
+   - 게임: 쓸 만한 무료 검색이 없어 직접 적는다.
+   키는 이 브라우저에만 둔다(media_search_keys). 기록 파일·내보내기에는 들어가지 않는다. */
+const SK_KEY = "media_search_keys";
+let skeys = { kakao: "", tmdb: "" };
+function loadKeys() { try { skeys = Object.assign({ kakao: "", tmdb: "" }, JSON.parse(LS.get(SK_KEY) || "{}")); } catch (e) { /* 기본값 */ } }
+function saveKeys() { LS.set(SK_KEY, JSON.stringify(skeys)); }
+const yearIn = (s) => (String(s || "").match(/\d{4}/) || [""])[0];
+async function getJSON(url, headers) {
+  const r = await fetch(url, { headers: headers || {} });
+  if (r.status === 401 || r.status === 403) { const e = new Error("검색 키가 거부됐습니다"); e.auth = true; throw e; }
+  if (r.status === 429) { const e = new Error("검색 한도를 넘었습니다"); e.quota = true; throw e; }
+  if (!r.ok) throw new Error("검색에 실패했습니다 (" + r.status + ")");
+  return r.json();
 }
-async function apiGet(url) {
-  let d = null;
-  try {
-    const r = await fetch(url);
-    if (r.ok) d = await r.json();
-  } catch (e) { /* CORS면 JSONP로 */ }
-  if (!d) d = await jsonp(url);
-  if (d && d.errorMessage) throw new Error(d.errorMessage);
-  return d;
-}
-const IT_MEDIA = { book: "media=ebook&entity=ebook", movie: "media=movie&entity=movie", drama: "media=tvShow&entity=tvSeason" };
-async function findCovers(kind, term) {
-  let last = null;
-  for (const c of ["KR", null]) {
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&${IT_MEDIA[kind]}&limit=12${c ? `&country=${c}` : ""}`;
-    let d;
-    try { d = await apiGet(url); } catch (e) { last = e; continue; }
-    const rows = (d.results || []).filter(r => r.artworkUrl100).map(r => ({
-      title: r.trackName || r.collectionName || "", creator: r.artistName || "",
-      year: (r.releaseDate || "").slice(0, 4),
-      cover: r.artworkUrl100.replace(/\/\d+x\d+bb\.(jpg|png)/, "/600x900bb.$1")
+async function searchBooks(q) {
+  if (skeys.kakao) {
+    const d = await getJSON(`https://dapi.kakao.com/v3/search/book?size=8&query=${encodeURIComponent(q)}`, { Authorization: "KakaoAK " + skeys.kakao });
+    return (d.documents || []).map(b => ({
+      title: b.title || "", creator: (b.authors || []).join(", "), year: yearIn(b.datetime),
+      sub: b.publisher || "", cover: b.thumbnail || ""
     }));
-    if (rows.length) return rows;
   }
-  if (last) throw last;
-  return [];
+  const d = await getJSON(`https://www.googleapis.com/books/v1/volumes?maxResults=8&printType=books&q=${encodeURIComponent(q)}`);
+  return (d.items || []).map(v => v.volumeInfo || {}).map(v => ({
+    title: v.title || "", creator: (v.authors || []).join(", "), year: yearIn(v.publishedDate), sub: v.publisher || "",
+    cover: ((v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail)) || "").replace(/^http:/, "https:").replace("&edge=curl", "")
+  }));
 }
+const TMDB_IMG = "https://image.tmdb.org/t/p/w342";
+function tmdb(path, params) {
+  const k = skeys.tmdb.trim();
+  const bearer = k.length > 60; // 읽기 액세스 토큰(eyJ…)은 길고, API 키는 32자
+  const qs = new URLSearchParams(Object.assign({ language: "ko-KR" }, params || {}, bearer ? {} : { api_key: k }));
+  return getJSON(`https://api.themoviedb.org/3${path}?${qs}`, bearer ? { Authorization: "Bearer " + k } : {});
+}
+async function searchScreen(kind, q) {
+  const tv = kind === "drama";
+  const d = await tmdb(tv ? "/search/tv" : "/search/movie", { query: q, include_adult: "false" });
+  return (d.results || []).slice(0, 8).map(r => ({
+    tmdb: r.id, tv, creator: "",
+    title: (tv ? r.name : r.title) || "", sub: (tv ? r.original_name : r.original_title) || "",
+    year: yearIn(tv ? r.first_air_date : r.release_date),
+    cover: r.poster_path ? TMDB_IMG + r.poster_path : ""
+  }));
+}
+/* 감독은 검색 결과에 없어서 고른 뒤에 한 번 더 묻는다. 드라마는 만든 사람(created_by). */
+async function screenCreator(h) {
+  try {
+    if (h.tv) { const d = await tmdb(`/tv/${h.tmdb}`); return (d.created_by || []).map(c => c.name).slice(0, 2).join(", "); }
+    const d = await tmdb(`/movie/${h.tmdb}/credits`);
+    return (d.crew || []).filter(c => c.job === "Director").map(c => c.name).slice(0, 2).join(", ");
+  } catch (e) { return ""; }
+}
+const canSearch = (kind) => kind === "book" || (isScreen(kind) && !!skeys.tmdb.trim());
+const searchTitles = (kind, q) => kind === "book" ? searchBooks(q) : searchScreen(kind, q);
 
 /* ==================== 테마 ==================== */
 const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -1515,7 +1546,7 @@ function openForm(o) {
         started: x.started, date: x.date, rating: x.rating, review: x.review, where: x.where.slice(), memo: x.memo }
     : { editing: null, kind: o.kind || "book", status: o.status || "done", title: "", creator: "", year: "", cover: "",
         started: today(), date: today(), rating: null, review: "", where: [], memo: "" };
-  form.hits = null; form.busy = false; form.err = ""; form.restored = 0;
+  form.sugg = null; form.picked = form.title; form.restored = 0;
   form.orig = formSnap(form);
   const d = o.fresh ? null : drafts()[draftKey(form)];
   if (d && d.f) { Object.assign(form, d.f); form.restored = d.at || now(); }
@@ -1535,7 +1566,10 @@ function renderForm() {
       <div class="seg sm" id="fKind">${KIND_IDS.map(id => `<button data-k="${id}">${KINDS[id].label}</button>`).join("")}</div>
       ${f.editing ? "" : `<div class="seg sm" id="fStatus">${["done", "doing", "wish"].map(s => `<button data-s="${s}">${statusLabel(f.kind, s)}</button>`).join("")}</div>`}
     </div>
-    <label class="field"><span>제목</span><input id="fTitle" data-f="title" value="${esc(f.title)}" placeholder="필수" autocomplete="off"></label>
+    <div class="field ac"><span>제목</span>
+      <input id="fTitle" data-f="title" value="${esc(f.title)}" placeholder="${canSearch(f.kind) ? "제목을 치면 후보가 나옵니다" : "필수"}" autocomplete="off" aria-autocomplete="list" aria-controls="fSugg">
+      <div class="sugg" id="fSugg" role="listbox"></div></div>
+    ${isScreen(f.kind) && !canSearch(f.kind) ? `<p class="hint acnote">TMDB 키를 넣으면 제목만 쳐도 감독·연도·포스터가 나옵니다 · <button type="button" class="linkbtn" id="fKeys">검색 설정</button></p>` : ""}
     <div class="two">
       <label class="field"><span>${k.who}</span><input data-f="creator" value="${esc(f.creator)}" autocomplete="off"></label>
       <label class="field"><span>작품 연도</span><input data-f="year" value="${esc(f.year)}" inputmode="numeric" placeholder="예: 2024" autocomplete="off"></label>
@@ -1559,9 +1593,7 @@ function renderForm() {
       <div class="inrow" style="flex-wrap:nowrap">
         ${f.cover ? `<img class="cvprev" src="${esc(f.cover)}" alt="" onerror="this.style.visibility='hidden'">` : ""}
         <input class="tin" data-f="cover" value="${esc(f.cover)}" placeholder="비워두면 제목으로 표지를 만듭니다" autocapitalize="off" spellcheck="false">
-        ${f.kind === "game" ? "" : `<button class="btn" id="fFind">표지 찾기</button>`}
       </div>
-      <div id="fHits">${hitsHTML()}</div>
     </div>
     <div class="rate-actions" style="margin-top:10px">
       <button class="btn primary" id="fSave">${f.editing ? "저장" : "추가"}</button>
@@ -1570,7 +1602,7 @@ function renderForm() {
 
   $$("#fKind button").forEach(b => {
     b.classList.toggle("on", b.dataset.k === f.kind);
-    b.onclick = () => { f.kind = b.dataset.k; f.hits = null; f.err = ""; renderForm(); };
+    b.onclick = () => { if (b.dataset.k === f.kind) return; f.kind = b.dataset.k; f.sugg = null; f.picked = ""; dropAutoCover(f); renderForm(); if (f.title.trim()) queueSuggest(0); };
   });
   $$("#fStatus button").forEach(b => {
     b.classList.toggle("on", b.dataset.s === f.status);
@@ -1585,50 +1617,97 @@ function renderForm() {
   };
   if (st === "done") bindRangePair($("#fRng"), $("#fNum"), () => f.rating, (v) => { f.rating = v; saveDraft(); });
   bindWhereEditor($("#fWhere"), () => f.where, (list) => { f.where = list; renderForm(); });
-  if ($("#fFind")) $("#fFind").onclick = searchCovers;
-  bindHits();
+  bindSuggest();
+  if ($("#fKeys")) $("#fKeys").onclick = () => openSearchConfig(true);
   $("#fSave").onclick = submitForm;
   saveDraft();
 }
-function hitsHTML() {
-  const f = form;
-  if (f.busy) return `<p class="hint" style="margin:8px 0 0"><span class="spin"></span> 찾는 중…</p>`;
-  if (f.err) return `<p class="hint" style="margin:8px 0 0">${esc(f.err)}</p>`;
-  if (!f.hits) return "";
-  return `<div class="covers">${f.hits.map((h, i) => `
-    <button data-i="${i}" class="${h.cover === f.cover ? "on" : ""}" title="${esc(h.title)}">
-      <img src="${esc(h.cover)}" alt="" loading="lazy"><small>${esc(h.title)}${h.year ? ` · ${esc(h.year)}` : ""}</small>
-    </button>`).join("")}</div>`;
+/* ---------- 제목 자동 완성 ---------- */
+let sugT = null, sugSeq = 0;
+/* 후보에서 가져온 표지는, 제목을 다르게 고치거나 종류를 바꾸면 같이 지운다 (엉뚱한 표지가 남지 않게) */
+function dropAutoCover(f) {
+  if (!f.autoCover || f.cover !== f.autoCover) return;
+  f.cover = ""; f.autoCover = "";
+  const inp = $('[data-f="cover"]'); if (inp) inp.value = "";
+  const pv = $(".cvprev"); if (pv) pv.remove();
+  saveDraft();
 }
-function bindHits() {
+function queueSuggest(delay) {
   const f = form;
-  $$("#fHits [data-i]").forEach(b => b.onclick = () => {
-    const h = f.hits[+b.dataset.i];
-    f.cover = h.cover;
-    if (!f.creator && h.creator) f.creator = h.creator;
-    if (!f.year && h.year) f.year = h.year;
-    renderForm();
+  clearTimeout(sugT);
+  if (!f) return;
+  const q = f.title.trim();
+  if (q !== f.picked) dropAutoCover(f);
+  if (q.length < 2 || q === f.picked || !canSearch(f.kind)) { f.sugg = null; return paintSuggest(); }
+  sugT = setTimeout(async () => {
+    const seq = ++sugSeq, kind = f.kind;
+    f.sugg = Object.assign({}, f.sugg || {}, { q, busy: true, err: "", idx: -1 });
+    paintSuggest();
+    let list = [], err = "", needKey = false;
+    try { list = await searchTitles(kind, q); }
+    catch (e) {
+      err = e.message;
+      needKey = kind === "book" && !skeys.kakao;
+      if (needKey) err = "도서 검색이 막혀 있습니다. 카카오 키를 넣으면 잘 나옵니다.";
+    }
+    if (form !== f || seq !== sugSeq || f.kind !== kind) return;
+    f.sugg = { q, list, err, needKey, busy: false, idx: -1 };
+    paintSuggest();
+  }, delay ?? 320);
+}
+function paintSuggest() {
+  const box = $("#fSugg"), f = form;
+  if (!box || !f) return;
+  const g = f.sugg;
+  if (!g || document.activeElement !== $("#fTitle")) { box.classList.remove("open"); return; }
+  box.classList.add("open");
+  if (g.busy && !(g.list && g.list.length)) { box.innerHTML = `<div class="sgmsg"><span class="spin"></span> 찾는 중…</div>`; return; }
+  if (g.err) {
+    box.innerHTML = `<div class="sgmsg">${esc(g.err)}${g.needKey || /키/.test(g.err) ? ` <button type="button" class="linkbtn" data-keys>검색 설정</button>` : ""}</div>`;
+    const kb = $("[data-keys]", box); if (kb) kb.onmousedown = (e) => { e.preventDefault(); openSearchConfig(true); };
+    return;
+  }
+  if (!g.list.length) { box.innerHTML = `<div class="sgmsg">찾은 작품이 없습니다. 그대로 적어도 됩니다.</div>`; return; }
+  box.innerHTML = g.list.map((h, i) => `
+    <button type="button" class="sg ${i === g.idx ? "on" : ""}" data-i="${i}" role="option">
+      ${h.cover ? `<img class="sgc" src="${esc(h.cover)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : `<img class="sgc" alt="" style="visibility:hidden">`}
+      <span class="sgm"><b>${esc(h.title)}</b><small>${esc([h.creator, h.year, h.sub && h.sub !== h.title ? h.sub : ""].filter(Boolean).join(" · ")) || "&nbsp;"}</small></span>
+    </button>`).join("");
+  $$(".sg", box).forEach(b => b.onmousedown = (e) => { e.preventDefault(); pickSuggest(+b.dataset.i); });
+}
+async function pickSuggest(i) {
+  const f = form, h = f.sugg && f.sugg.list[i];
+  if (!h) return;
+  f.title = h.title; f.picked = h.title; f.autoCover = h.cover || "";
+  if (h.creator) f.creator = h.creator;
+  if (h.year) f.year = h.year;
+  if (h.cover) f.cover = h.cover;
+  f.sugg = null;
+  renderForm();
+  if (h.tmdb && !h.creator) {
+    const who = await screenCreator(h);
+    if (form === f && who && !f.creator.trim()) {
+      f.creator = who; saveDraft();
+      const inp = $('[data-f="creator"]'); if (inp) inp.value = who;
+    }
+  }
+}
+function bindSuggest() {
+  const t = $("#fTitle"), f = form;
+  t.addEventListener("input", () => queueSuggest());
+  t.addEventListener("focus", () => { if (f.sugg) paintSuggest(); });
+  t.addEventListener("blur", () => setTimeout(paintSuggest, 0));
+  t.addEventListener("keydown", (e) => {
+    const g = f.sugg, n = g && g.list ? g.list.length : 0;
+    const open = $("#fSugg").classList.contains("open");
+    if (e.key === "Escape" && open) { e.preventDefault(); e.stopPropagation(); f.sugg = null; paintSuggest(); return; }
+    if (!open || !n || e.isComposing) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); g.idx = (g.idx + 1) % n; paintSuggest(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); g.idx = (g.idx - 1 + n) % n; paintSuggest(); }
+    else if (e.key === "Enter" && g.idx >= 0 && !e.metaKey && !e.ctrlKey) { e.preventDefault(); pickSuggest(g.idx); }
   });
 }
-async function searchCovers() {
-  const f = form;
-  const term = f.title.trim();
-  if (!term) return toast("제목을 먼저 적어 주세요");
-  f.busy = true; f.err = ""; f.hits = null;
-  $("#fHits").innerHTML = hitsHTML();
-  try {
-    const hits = await findCovers(f.kind, term);
-    if (form !== f) return;
-    f.hits = hits;
-    if (!hits.length) f.err = "찾지 못했습니다. 표지 주소를 직접 붙여 넣어도 됩니다.";
-  } catch (e) {
-    if (form !== f) return;
-    f.err = "검색에 실패했습니다. 표지 주소를 직접 붙여 넣어도 됩니다.";
-  }
-  f.busy = false;
-  $("#fHits").innerHTML = hitsHTML();
-  bindHits();
-}
+
 function submitForm() {
   const f = form;
   if (!f) return;
@@ -1924,6 +2003,72 @@ async function openHistory() {
   });
 }
 
+/* ==================== 작품 검색 키 설정 ====================
+   fromForm이면 저장한 뒤 쓰던 폼으로 돌아간다 (폼 내용은 임시 저장에서 되살아난다). */
+function openSearchConfig(fromForm) {
+  let back = null;
+  if (fromForm && form) {
+    saveDraft();
+    const x = form.editing ? item(form.editing) : null;
+    back = x ? { editing: x } : { kind: form.kind, status: form.status };
+    form = null;
+  }
+  el.dlg.className = "dlg show";
+  el.dlg.style.removeProperty("--accent");
+  el.dlgTitle.textContent = "작품 검색";
+  el.dlgBody.innerHTML = `
+    <p style="margin:0 0 14px;color:var(--text-2);font-size:13.5px;line-height:1.6">
+      추가할 때 제목을 치면 저자·감독·연도·표지 후보를 띄우는 데 씁니다. 둘 다 무료이고,
+      키는 이 브라우저에만 저장되며 기록 파일이나 내보내기에는 들어가지 않습니다.</p>
+    <label class="field"><span>카카오 REST API 키 · 도서</span>
+      <input id="kKakao" type="password" value="${esc(skeys.kakao)}" placeholder="32자 영문·숫자" autocomplete="new-password" autocapitalize="off" spellcheck="false"></label>
+    <details style="margin:-4px 0 14px">
+      <summary style="font-size:13px;color:var(--text-2);cursor:pointer">카카오 키 받는 법</summary>
+      <div style="font-size:13px;color:var(--text-2);line-height:1.7;padding:8px 0 0">
+        1. <b>developers.kakao.com</b>에 카카오 계정으로 로그인 → 내 애플리케이션 → 애플리케이션 추가하기 (이름은 아무거나)<br>
+        2. 만든 앱 → 앱 키에서 <b>REST API 키</b>를 복사해 위에 붙여 넣습니다.<br>
+        3. 검색이 안 되면 앱 → 플랫폼 → Web에 <b>https://likelikelikeit.github.io</b>를 등록해 주세요.
+      </div>
+    </details>
+    <label class="field"><span>TMDB API 키 또는 읽기 액세스 토큰 · 영화·드라마</span>
+      <input id="kTmdb" type="password" value="${esc(skeys.tmdb)}" placeholder="API 키(32자) 또는 eyJ… 토큰" autocomplete="new-password" autocapitalize="off" spellcheck="false"></label>
+    <details style="margin:-4px 0 14px">
+      <summary style="font-size:13px;color:var(--text-2);cursor:pointer">TMDB 키 받는 법</summary>
+      <div style="font-size:13px;color:var(--text-2);line-height:1.7;padding:8px 0 0">
+        1. <b>themoviedb.org</b>에 가입하고 로그인합니다.<br>
+        2. 프로필 → 설정 → API에서 API 키를 신청합니다 (개인용, 용도는 "개인 감상 기록" 정도로).<br>
+        3. 나온 <b>API 키</b>나 <b>API 읽기 액세스 토큰</b> 중 하나를 위에 붙여 넣습니다.
+      </div>
+    </details>
+    <div class="rate-actions">
+      <button class="btn primary" id="kSave">${back ? "저장하고 돌아가기" : "저장"}</button>
+      <button class="btn" id="kTest">시험해 보기</button>
+    </div>
+    <p class="hint" id="kHint" style="margin-top:10px"></p>`;
+  const read = () => { skeys.kakao = $("#kKakao").value.replace(/\s+/g, ""); skeys.tmdb = $("#kTmdb").value.replace(/\s+/g, ""); };
+  const hint = (t) => { $("#kHint").innerHTML = t; };
+  $("#kTest").onclick = async () => {
+    const before = Object.assign({}, skeys);
+    read();
+    hint(`<span class="spin"></span> 확인 중…`);
+    const out = [];
+    try { const r = await searchBooks("어린 왕자"); out.push(`도서 ${r.length ? "됩니다" : "결과 없음"}${skeys.kakao ? "" : " (키 없이 Google Books)"}`); }
+    catch (e) { out.push("도서: " + e.message); }
+    if (skeys.tmdb) {
+      try { const r = await searchScreen("movie", "기생충"); out.push(`영화·드라마 ${r.length ? "됩니다" : "결과 없음"}`); }
+      catch (e) { out.push("영화·드라마: " + e.message); }
+    } else out.push("영화·드라마: TMDB 키가 없습니다");
+    skeys = before;
+    hint(esc(out.join(" · ")));
+  };
+  $("#kSave").onclick = () => {
+    read(); saveKeys();
+    toast("검색 키를 저장했습니다");
+    if (back) openForm(back); else closeDlg();
+  };
+  openDlg();
+}
+
 /* ==================== GitHub 연결 설정 ==================== */
 function openGHConfig() {
   el.dlg.className = "dlg";
@@ -2023,6 +2168,7 @@ el.menu.addEventListener("click", (e) => {
   else if (act === "history") openHistory();
   else if (act === "forcepull") forcePull();
   else if (act === "ghcfg") openGHConfig();
+  else if (act === "search") openSearchConfig(false);
 });
 el.file.addEventListener("change", (e) => { const f = e.target.files[0]; if (f) readFile(f); e.target.value = ""; });
 
@@ -2064,6 +2210,7 @@ window.addEventListener("online", () => { if (ghOn()) pull(true); });
 /* ==================== 시작 ==================== */
 (async function init() {
   ui.layout = LS.get(LAYOUT_KEY) === "list" ? "list" : "grid";
+  loadKeys();
   applyTheme();
   render();
   await loadAll();
