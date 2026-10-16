@@ -1093,9 +1093,9 @@ function rowHTML(x) {
       ${scHTML(x.rating)}
     </button>`;
 }
-function doingHTML(list, label) {
+function doingHTML(list, F) {
   if (!list.length) return "";
-  return `<section class="doing"><h3><i></i>${label} · ${list.length}</h3><div class="dscroll">${list.map(x => `
+  return `<section class="doing"><h3><i></i>${list.length}${F.unit}${F.unit === "개" ? "를" : "을"} ${F.doing}</h3><div class="dscroll">${list.map(x => `
     <div class="dcard k-${x.kind}" data-id="${x.id}" tabindex="0">
       ${coverHTML(x, true)}
       <div class="dm">
@@ -1125,7 +1125,7 @@ function renderRecords() {
   const yearN = famAll.filter(x => x.status === "done" && yearOf(x) === thisYear).length;
   const doingN = famAll.filter(x => x.status === "doing").length;
   const sub = famAll.length
-    ? `${thisYear}년에 <b>${yearN}${F.unit}</b> ${F.past}${doingN ? ` · 지금 ${F.doing} ${doingN}${F.unit}` : ""}`
+    ? `${thisYear}년에 <b>${yearN}${F.unit}</b> ${F.past}${doingN ? ` · 지금 ${doingN}${F.unit} ${F.doing}` : ""}`
     : "";
   const block = (g) => ui.layout === "list" ? `<div class="list">${g.map(rowHTML).join("")}</div>` : `<div class="grid">${g.map(cardHTML).join("")}</div>`;
 
@@ -1168,7 +1168,7 @@ function renderRecords() {
       </div>
       <span class="count">${countText(list, F.unit)}${all.length !== list.length ? ` / ${all.length}${F.unit}` : ""}</span>
     </div>` : ""}
-    ${doingHTML(doing, F.doing)}
+    ${doingHTML(doing, F)}
     ${body}`;
   $$("#subSeg button").forEach(b => {
     b.classList.toggle("on", b.dataset.s === ui.sub);
