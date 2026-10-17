@@ -30,6 +30,7 @@
 - 음악 페이지의 동기화 코드(`LS`, `ghFetch`, `ghWrite`, 설정 화면)와 말투, 점수 색은 재사용한다.
   디자인은 음악 페이지와 일부러 다르게 간다: 따뜻한 오프화이트 배경, 글꼴은 Pretendard(jsDelivr, 버전 고정) 하나, 탭마다 다른 강조색,
   로고·파비콘은 탭별 Fluent Emoji 3D 아이콘(`icons/`, MIT), 표지가 없으면 제목으로 만든 타이포 표지. 빈티지하게 가지 않는다.
+  선택 UI(드롭다운·세그먼트·메뉴)는 리퀴드 글래스 스타일. `<select class="sel">`은 자동으로 유리 버튼+유리 목록으로 감싸진다(원래 select는 숨겨 두고 값·change만 주고받음).
 - 음악 페이지와 같은 출처(likelikelikeit.github.io)라 localStorage를 함께 쓴다. 이 페이지의 키는 전부 `media_`로 시작한다.
 - 음악 페이지 코드를 참고할 때 `gh api repos/likelikelikeit/music-ratings/contents/index.html --jq .content | base64 -d`로 받아 읽는다.
 - `data.json`에는 `version` 필드를 둔다. 스키마를 바꾸면 version을 올리고 읽을 때 마이그레이션한다.
