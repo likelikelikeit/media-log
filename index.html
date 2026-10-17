@@ -19,6 +19,15 @@
   --sh-3:0 30px 80px rgba(20,15,5,.28);
   --c-book:#2f7a56; --c-screen:#4458d8; --c-game:#d14d2b; --c-wish:#a8720f;
   --accent:var(--c-book);
+  /* 리퀴드 글래스: 반투명 바탕 + 위쪽 빛 반사 + 얇은 테두리 */
+  --g-fill:linear-gradient(180deg,rgba(255,255,255,.82),rgba(255,255,255,.52));
+  --g-fill-2:linear-gradient(145deg,rgba(255,255,255,.72),rgba(255,255,255,.42) 45%,rgba(255,255,255,.6));
+  --g-edge:rgba(255,255,255,.75);
+  --g-hi:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(48,36,16,.05);
+  --g-sh:0 1px 2px rgba(48,36,16,.07),0 6px 16px -8px rgba(48,36,16,.22);
+  --g-track:rgba(48,36,16,.055);
+  --g-menu:rgba(252,250,246,.74);
+  --g-hover:rgba(255,255,255,.7);
   --sans:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"SF Pro Text","Pretendard","Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;
   color-scheme:light;
 }
@@ -32,6 +41,14 @@
   --sh-2:0 14px 34px -12px rgba(0,0,0,.7),0 0 0 .5px rgba(255,246,230,.08);
   --sh-3:0 30px 80px rgba(0,0,0,.7);
   --c-book:#6fcb9c; --c-screen:#97a4ff; --c-game:#ff8f6d; --c-wish:#efb85a;
+  --g-fill:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.06));
+  --g-fill-2:linear-gradient(145deg,rgba(255,255,255,.14),rgba(255,255,255,.04) 45%,rgba(255,255,255,.1));
+  --g-edge:rgba(255,255,255,.16);
+  --g-hi:inset 0 1px 0 rgba(255,255,255,.2),inset 0 -1px 0 rgba(0,0,0,.25);
+  --g-sh:0 1px 2px rgba(0,0,0,.4),0 8px 20px -8px rgba(0,0,0,.6);
+  --g-track:rgba(255,246,230,.07);
+  --g-menu:rgba(40,38,35,.68);
+  --g-hover:rgba(255,255,255,.1);
   color-scheme:dark;
 }
 body[data-view="screen"]{--accent:var(--c-screen)}
@@ -89,17 +106,21 @@ input,textarea,select{font-size:16px}
 .savechip .short{display:none}
 .savechip{flex:none;font-size:12px;color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;cursor:pointer;max-width:150px}
 
-.seg{display:inline-flex;background:var(--field);border-radius:10px;padding:2px;gap:2px}
-.seg button{padding:5px 12px;border-radius:8px;font-size:13.5px;font-weight:540;color:var(--text-2);transition:.15s;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
-.seg button.on{background:var(--elev);color:var(--text);box-shadow:var(--sh-1)}
+.seg{display:inline-flex;background:var(--g-track);border-radius:13px;padding:3px;gap:2px;box-shadow:inset 0 1px 2px rgba(48,36,16,.06)}
+.seg button{padding:5px 12px;border-radius:10px;font-size:13.5px;font-weight:540;color:var(--text-2);transition:background .18s,color .18s,box-shadow .18s,transform .12s;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;border:.5px solid transparent}
+.seg button:active{transform:scale(.96)}
+.seg button.on{background:var(--g-fill);color:var(--text);border-color:var(--g-edge);box-shadow:var(--g-sh),var(--g-hi);
+  -webkit-backdrop-filter:blur(12px) saturate(180%);backdrop-filter:blur(12px) saturate(180%)}
 .seg.sm button{padding:4px 10px;font-size:13px}
 
 /* 메뉴 */
 .menuwrap{position:relative}
-.menu{position:absolute;right:0;top:calc(100% + 8px);min-width:236px;background:var(--elev);border:.5px solid var(--sep-2);border-radius:14px;box-shadow:var(--sh-2);padding:6px;display:none;z-index:60}
-.menu.open{display:block}
+.menu{position:absolute;right:0;top:calc(100% + 8px);min-width:236px;background:var(--g-menu);border:.5px solid var(--g-edge);border-radius:18px;
+  box-shadow:0 24px 60px -16px rgba(30,20,0,.38),0 0 0 .5px var(--sep),var(--g-hi);padding:6px;display:none;z-index:60;
+  -webkit-backdrop-filter:blur(30px) saturate(190%);backdrop-filter:blur(30px) saturate(190%)}
+.menu.open{display:block;animation:gpop .2s cubic-bezier(.2,.9,.3,1.25);transform-origin:top right}
 .menu button{display:flex;width:100%;align-items:center;gap:10px;padding:8px 11px;border-radius:9px;font-size:14px;text-align:left}
-.menu button:hover{background:var(--chip)}
+.menu button:hover{background:var(--g-hover)}
 .menu .div{height:.5px;background:var(--sep);margin:6px 4px}
 .menu .lab{padding:8px 11px 4px;font-size:12px;color:var(--text-3)}
 .menu .row{display:flex;gap:6px;padding:2px 8px 8px}
@@ -115,6 +136,32 @@ input,textarea,select{font-size:16px}
 select.sel{background:var(--field);border:none;border-radius:10px;padding:6px 10px;font-size:13.5px;outline:none;-webkit-appearance:none;appearance:none;padding-right:26px;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:right 9px center}
+/* 유리 선택 칸. 원래 <select>는 뒤에 숨겨 두고 값만 주고받는다 (펼친 목록은 브라우저가 꾸미게 해 주지 않아서). */
+.gsel{position:relative;display:inline-flex}
+.gsel > select{position:absolute;inset:0;width:100%;height:100%;opacity:0;pointer-events:none}
+.gbtn{display:inline-flex;align-items:center;gap:7px;padding:6px 10px 6px 12px;border-radius:12px;font-size:13.5px;font-weight:550;white-space:nowrap;
+  background:var(--g-fill);border:.5px solid var(--g-edge);box-shadow:var(--g-sh),var(--g-hi);color:var(--text);
+  -webkit-backdrop-filter:blur(14px) saturate(180%);backdrop-filter:blur(14px) saturate(180%);transition:transform .12s,box-shadow .18s}
+.gbtn:hover{box-shadow:0 2px 4px rgba(48,36,16,.08),0 10px 22px -10px rgba(48,36,16,.3),var(--g-hi)}
+.gbtn:active{transform:scale(.97)}
+.gbtn svg{flex:none;color:var(--text-3);transition:transform .2s}
+.gbtn[aria-expanded="true"] svg{transform:rotate(180deg)}
+.gbtn:disabled{opacity:.42;cursor:default;box-shadow:var(--g-hi)}
+.gbtn .gl{overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.gmenu{position:fixed;z-index:200;padding:6px;border-radius:18px;overflow-y:auto;overscroll-behavior:contain;display:none;
+  background:var(--g-menu);border:.5px solid var(--g-edge);
+  box-shadow:0 24px 60px -16px rgba(30,20,0,.4),0 0 0 .5px var(--sep),var(--g-hi);
+  -webkit-backdrop-filter:blur(30px) saturate(190%);backdrop-filter:blur(30px) saturate(190%)}
+.gmenu.open{display:block;animation:gpop .2s cubic-bezier(.2,.9,.3,1.25)}
+.gmenu.up{transform-origin:bottom center}
+.gmenu:not(.up){transform-origin:top center}
+@keyframes gpop{from{opacity:0;transform:scale(.94) translateY(-4px)}to{opacity:1;transform:none}}
+.gi{display:flex;align-items:center;gap:10px;width:100%;padding:8px 12px;border-radius:12px;font-size:14.5px;text-align:left;white-space:nowrap}
+.gi:hover,.gi.act{background:var(--g-hover);box-shadow:var(--g-hi)}
+.gi .ck{width:16px;flex:none;color:var(--accent);opacity:0}
+.gi.sel .ck{opacity:1}
+.gi.sel{font-weight:640}
+@media (max-width:860px){.gi{padding:10px 12px;font-size:16px}}
 .empty{text-align:center;padding:11vh 20px;color:var(--text-2)}
 .empty h2{font-size:22px;font-weight:740;letter-spacing:-.035em;margin:0 0 8px;color:var(--text)}
 .eico{width:76px;height:76px;display:block;margin:0 auto 16px}
@@ -253,8 +300,7 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
 .review:focus,.tin:focus,.field input:focus,.field textarea:focus{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 60%,transparent)}
 .tin{flex:1;background:var(--field);border:none;border-radius:10px;padding:8px 11px;font-size:14px;outline:none;min-width:0}
 .dpick{display:inline-flex;gap:6px;flex-wrap:wrap}
-.dpick .sel{padding-top:7px;padding-bottom:7px}
-.dpick .sel:disabled{opacity:.45}
+.dpick .gbtn{padding-top:7px;padding-bottom:7px}
 .drow{flex-wrap:wrap}
 .marks{display:flex;gap:6px;flex-wrap:wrap}
 .mark{font-size:12.5px;padding:3.5px 10px;border-radius:99px;background:var(--chip);font-weight:540;color:var(--text-2)}
@@ -345,7 +391,7 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
   .dcard{flex-basis:270px}
   .wlist{grid-template-columns:1fr}
   /* iOS는 16px보다 작은 입력칸에 초점이 가면 화면을 확대한다 */
-  .tin,.review,.numin,.field input:not([type=range]),.field textarea,.searchbox input,.dpick .sel{font-size:16px}
+  .tin,.review,.numin,.field input:not([type=range]),.field textarea,.searchbox input{font-size:16px}
 }
 @media (max-width:520px){
   .brand span{display:none}
@@ -2177,6 +2223,125 @@ function openGHConfig() {
   };
   openDlg();
 }
+
+/* ==================== 유리 선택 칸 ====================
+   화면에 <select class="sel">이 생기면 저절로 유리 버튼으로 감싼다.
+   원래 select는 그대로 두고, 목록에서 고르면 그 값과 change 이벤트를 넘겨 준다. 기존 코드는 손대지 않아도 된다. */
+const CHEV = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
+const CHECK = `<svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+const gmenu = document.createElement("div");
+gmenu.className = "gmenu"; gmenu.setAttribute("role", "listbox");
+document.body.appendChild(gmenu);
+let gOpen = null, gAct = -1, gSwallow = false;
+
+function glassify(sel) {
+  if (sel.dataset.glass) return;
+  sel.dataset.glass = "1";
+  sel.tabIndex = -1;
+  const wrap = document.createElement("span");
+  wrap.className = "gsel";
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+  const btn = document.createElement("button");
+  btn.type = "button"; btn.className = "gbtn";
+  btn.setAttribute("aria-haspopup", "listbox"); btn.setAttribute("aria-expanded", "false");
+  if (sel.getAttribute("aria-label")) btn.setAttribute("aria-label", sel.getAttribute("aria-label"));
+  wrap.appendChild(btn);
+  sel._gbtn = btn;
+  syncGlass(sel);
+  sel.addEventListener("change", () => syncGlass(sel));
+  btn.onclick = (e) => { e.stopPropagation(); gOpen && gOpen.sel === sel ? closeGlass() : openGlass(sel); };
+  btn.onkeydown = (e) => {
+    if (["ArrowDown", "ArrowUp"].includes(e.key) && !gOpen) { e.preventDefault(); openGlass(sel); }
+  };
+}
+function syncGlass(sel) {
+  const btn = sel._gbtn;
+  if (!btn) return;
+  const o = sel.options[sel.selectedIndex];
+  btn.innerHTML = `<span class="gl">${esc(o ? o.text : "")}</span>${CHEV}`;
+  btn.disabled = sel.disabled;
+}
+function openGlass(sel) {
+  closeGlass();
+  if (sel.disabled) return;
+  const opts = Array.from(sel.options);
+  gmenu.innerHTML = opts.map((o, i) => `<button type="button" class="gi ${i === sel.selectedIndex ? "sel" : ""}" data-i="${i}" role="option" aria-selected="${i === sel.selectedIndex}">${CHECK}<span>${esc(o.text)}</span></button>`).join("");
+  gOpen = { sel };
+  gAct = sel.selectedIndex;
+  sel._gbtn.setAttribute("aria-expanded", "true");
+  gmenu.style.maxHeight = "";
+  gmenu.classList.add("open");
+  const room = placeGlass(true);
+  const cur = $(".gi.sel", gmenu);
+  gmenu.scrollTop = cur ? Math.max(0, cur.offsetTop - room / 2 + cur.offsetHeight / 2) : 0;
+  $$(".gi", gmenu).forEach(b => {
+    b.onclick = (e) => { e.stopPropagation(); pickGlass(+b.dataset.i); };
+    b.onmouseenter = () => { gAct = +b.dataset.i; paintGlassAct(); };
+  });
+}
+/* 자리 잡기: 버튼 아래가 좁으면 위로 편다. 스크롤하면 버튼을 따라간다. */
+function placeGlass(first) {
+  const r = gOpen.sel._gbtn.getBoundingClientRect(), vh = window.innerHeight, vw = window.innerWidth;
+  if (r.bottom < 0 || r.top > vh) { closeGlass(); return 0; }
+  if (first) {
+    gmenu.style.minWidth = Math.max(r.width, 140) + "px";
+    const below = vh - r.bottom - 12, above = r.top - 12;
+    gOpen.up = below < 220 && above > below;
+    gOpen.room = Math.max(160, Math.min(gOpen.up ? above : below, 380));
+    gmenu.style.maxHeight = gOpen.room + "px";
+    gmenu.classList.toggle("up", gOpen.up);
+  }
+  const w = gmenu.offsetWidth, h = Math.min(gmenu.scrollHeight, gOpen.room);
+  gmenu.style.left = Math.max(8, Math.min(r.left, vw - w - 8)) + "px";
+  gmenu.style.top = (gOpen.up ? Math.max(8, r.top - 6 - h) : r.bottom + 6) + "px";
+  return gOpen.room;
+}
+function paintGlassAct() {
+  $$(".gi", gmenu).forEach((b, i) => b.classList.toggle("act", i === gAct));
+  const a = $(".gi.act", gmenu);
+  if (!a) return;
+  if (a.offsetTop < gmenu.scrollTop) gmenu.scrollTop = a.offsetTop - 6;
+  else if (a.offsetTop + a.offsetHeight > gmenu.scrollTop + gmenu.clientHeight) gmenu.scrollTop = a.offsetTop + a.offsetHeight - gmenu.clientHeight + 6;
+}
+function pickGlass(i) {
+  if (!gOpen) return;
+  const sel = gOpen.sel;
+  closeGlass(true);
+  if (sel.selectedIndex !== i) {
+    sel.selectedIndex = i;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  syncGlass(sel);
+}
+function closeGlass(refocus) {
+  if (!gOpen) return;
+  const btn = gOpen.sel._gbtn;
+  gOpen = null;
+  gmenu.classList.remove("open");
+  if (btn && btn.isConnected) { btn.setAttribute("aria-expanded", "false"); if (refocus) btn.focus({ preventScroll: true }); }
+}
+new MutationObserver(() => {
+  $$("select.sel:not([data-glass])").forEach(glassify);
+  if (gOpen && !gOpen.sel.isConnected) closeGlass();
+}).observe(document.body, { childList: true, subtree: true });
+$$("select.sel").forEach(glassify);
+// 바깥을 누르면 목록만 닫고, 그 클릭은 뒤로 넘기지 않는다 (창이 같이 닫히지 않게)
+document.addEventListener("pointerdown", (e) => {
+  if (gOpen && !gmenu.contains(e.target) && !gOpen.sel._gbtn.contains(e.target)) { closeGlass(); gSwallow = true; }
+}, true);
+document.addEventListener("click", (e) => { if (gSwallow) { gSwallow = false; e.stopPropagation(); e.preventDefault(); } }, true);
+document.addEventListener("keydown", (e) => {
+  if (!gOpen) return;
+  const n = gmenu.children.length;
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeGlass(true); }
+  else if (e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); gAct = (gAct + 1) % n; paintGlassAct(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); gAct = (gAct - 1 + n) % n; paintGlassAct(); }
+  else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); if (gAct >= 0) pickGlass(gAct); }
+  else if (e.key === "Tab") closeGlass();
+}, true);
+window.addEventListener("resize", () => closeGlass());
+document.addEventListener("scroll", (e) => { if (gOpen && !gmenu.contains(e.target)) placeGlass(false); }, true);
 
 /* ==================== 이벤트 ==================== */
 $("#openAdd").onclick = openAdd;
