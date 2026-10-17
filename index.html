@@ -310,6 +310,29 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
 .drow:first-of-type{border-top:none}
 .drow span{color:var(--text-2)}
 .drow b{font-weight:580;font-variant-numeric:tabular-nums;text-align:right}
+.eplist{display:flex;flex-direction:column}
+.eprow{border-radius:12px;margin:0 -8px}
+.eprow + .eprow::before{content:"";display:block;height:.5px;background:var(--sep);margin:0 8px}
+.eprow.open{background:var(--chip)}
+.eprow.open::before,.eprow.open + .eprow::before{opacity:0}
+.ephead{display:grid;grid-template-columns:58px 1fr auto;gap:10px;align-items:center;width:100%;padding:10px 8px;text-align:left}
+.epno{font-size:12.5px;font-weight:650;color:var(--text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ept{min-width:0;font-size:14.5px;font-weight:560;letter-spacing:-.015em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ept small{display:block;font-size:12.5px;color:var(--text-2);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.epedit{padding:0 8px 12px;display:flex;flex-direction:column;gap:10px}
+.epn{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-2)}
+.epn .tin{width:50px;flex:none;text-align:center}
+.ept-in{min-width:150px}
+.eppick{margin-top:12px;padding:8px;border-radius:18px;background:var(--g-menu);border:.5px solid var(--g-edge);box-shadow:var(--g-sh),var(--g-hi);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%)}
+.epp-head{display:flex;align-items:center;gap:8px;padding:2px 2px 6px}
+.epp-list{max-height:330px;overflow-y:auto;overscroll-behavior:contain}
+.epp-row{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:12px;text-align:left}
+.epp-row:hover{background:var(--g-hover)}
+.epp-row .t{flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.epp-row .add{font-size:12.5px;font-weight:650;color:var(--accent);white-space:nowrap}
+.epp-row.done{cursor:default}
+.epp-row.done .add,.epp-row.done .t{color:var(--text-3)}
 .callout{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:15px 16px;border-radius:14px;
   background:color-mix(in srgb,var(--kc) 9%,transparent)}
 .callout p{margin:0;font-size:13.5px;color:var(--text-2);flex:1;min-width:170px}
@@ -508,7 +531,7 @@ const KEY = "media_log_v1";
 const SNAP_KEYS = ["media_snap_0", "media_snap_1", "media_snap_2"];
 const SNAP_META = "media_snap_meta";
 const LAYOUT_KEY = "media_layout";
-const VERSION = 2;
+const VERSION = 3;
 
 /* 종류별 말. 상태는 wish(위시) → doing(하는 중) → done(완료) */
 const KINDS = {
@@ -541,7 +564,7 @@ const WHERE_SUG = {
   game:  ["스팀", "모바일"]
 };
 
-let db = { version: VERSION, items: [], settings: { theme: "auto" } };
+let db = { version: VERSION, items: [], episodes: [], settings: { theme: "auto" } };
 let ui = {
   view: "books", q: "",
   sort: "date", year: "all", sub: "all",   // 기록 화면
@@ -709,7 +732,19 @@ async function loadAll() {
 }
 
 /* ---------- 저장 ---------- */
+/* 저장할 때마다 직전에 저장된 상태와 비교해, 실제로 바뀐 작품·에피소드에만 updated를 새로 찍는다.
+   (MCP 등에서 "최근에 고친 감상"을 물을 때 쓴다) */
+function stampUpdated() {
+  let prev = null;
+  try { prev = JSON.parse(LS.get(KEY) || "null"); } catch (e) { prev = null; }
+  if (!prev) return;
+  const sig = (r) => { const { updated, ...rest } = r; return JSON.stringify(rest); };
+  const old = new Map();
+  for (const r of [...(prev.items || []), ...(prev.episodes || [])]) if (r && r.id) old.set(r.id, sig(r));
+  for (const r of [...db.items, ...db.episodes]) if (old.has(r.id) && old.get(r.id) !== sig(r)) r.updated = now();
+}
 function save(immediate) {
+  stampUpdated();
   db.updatedAt = now();
   dirty = true;
   if (!LS.set(KEY, JSON.stringify(db))) {
@@ -785,7 +820,7 @@ async function push(force) {
 function commitMsg() {
   const n = (fam) => db.items.filter(x => x.status === "done" && famOf(x.kind) === fam).length;
   const doing = db.items.filter(x => x.status === "doing").length, wish = db.items.filter(x => x.status === "wish").length;
-  return `기록 갱신 · 책 ${n("books")} · 영상 ${n("screen")} · 게임 ${n("games")} · 하는 중 ${doing} · 위시 ${wish}`;
+  return `기록 갱신 · 책 ${n("books")} · 영상 ${n("screen")} · 게임 ${n("games")} · 하는 중 ${doing} · 위시 ${wish}${db.episodes.length ? ` · 에피소드 ${db.episodes.length}` : ""}`;
 }
 /* 저장소 내용을 이 기기에 그대로 반영한다. */
 function adopt(res) {
@@ -902,13 +937,16 @@ function undo() {
 }
 
 /* ==================== 정규화 · 마이그레이션 ====================
-   data.json 구조 (version 2)
+   data.json 구조 (version 3)
    { version, updatedAt, settings: {theme},
      items: [{ id, kind: book|movie|drama|game, status: wish|doing|done,
                title, creator, year(작품 연도), cover,
                rating(0.5–10, 0.5 단위|null), review,
                started(시작한 날), date(다 읽은/본/끝낸 날) — 둘 다 YYYY-MM-DD, 모르면 YYYY-MM 또는 YYYY,
-               where: [볼 수 있는 곳·플랫폼…], memo, added(ms) }] }
+               where: [볼 수 있는 곳·플랫폼…], memo, added(ms),
+               tmdbId(TMDB 번호|null), updated(ms, 마지막으로 고친 때) }],
+     episodes: [{ id, itemId(드라마 id), season, no, title, rating, review, date, added, updated }] }
+   에피소드는 MCP 등에서 따로 읽기 좋게 작품 안에 넣지 않고 최상위 목록으로 둔다. 자세한 설명은 DATA.md. 
    스키마를 바꾸면 VERSION을 올리고 migrate()에 단계를 하나 추가한다.
    모르는 필드는 지우지 않고 그대로 둔다 (새 버전 페이지가 넣은 값을 지키려고). */
 function migrate(d) {
@@ -919,6 +957,8 @@ function migrate(d) {
     for (const x of d.items || []) if (x && isNum(x.rating)) x.rating = snap(x.rating);
     d.version = 2;
   }
+  // v2 → v3: 최상위 episodes 목록과 tmdbId·updated가 생겼다. 기존 데이터는 빈 목록으로 시작한다.
+  if (v < 3) { if (!Array.isArray(d.episodes)) d.episodes = []; d.version = 3; }
   return d;
 }
 function normalize(d) {
@@ -927,15 +967,28 @@ function normalize(d) {
   const out = Object.assign({}, d, {
     version: Math.max(VERSION, +d.version || 1),
     updatedAt: d.updatedAt || 0,
-    items: [],
+    items: [], episodes: [],
     settings: Object.assign({ theme: "auto" }, d.settings || {})
   });
   for (const x of d.items || []) if (x && String(x.title || "").trim()) out.items.push(mkItem(x));
+  const ids = new Set(out.items.map(x => x.id));
+  for (const e of d.episodes || []) if (e && ids.has(e.itemId)) out.episodes.push(mkEp(e));
   return out;
+}
+const cleanDate = (v) => { v = String(v || "").trim(); return DATE_RE.test(v) ? v : ""; };
+const epSort = (a, b) => (a.season ?? 999) - (b.season ?? 999) || (a.no ?? 9999) - (b.no ?? 9999);
+function mkEp(e) {
+  const n = (v) => { const k = parseInt(v, 10); return Number.isFinite(k) && k >= 0 ? k : null; };
+  return Object.assign({}, e, {
+    id: e.id || uid("e"), itemId: e.itemId, season: n(e.season), no: n(e.no),
+    title: String(e.title || "").trim(), rating: isNum(e.rating) ? snap(e.rating) : null,
+    review: String(e.review || ""), date: cleanDate(e.date),
+    added: +e.added || now(), updated: +e.updated || +e.added || now()
+  });
 }
 function mkItem(x) {
   const where = Array.isArray(x.where) ? x.where : String(x.where || "").split(/\s*[,/|]\s*/);
-  const dt = (v) => { v = String(v || "").trim(); return DATE_RE.test(v) ? v : ""; };
+  const dt = cleanDate;
   return Object.assign({}, x, {
     id: x.id || uid("m"),
     kind: KIND_IDS.includes(x.kind) ? x.kind : "book",
@@ -950,12 +1003,15 @@ function mkItem(x) {
     date: dt(x.date),
     where: [...new Set(where.map(s => String(s).trim()).filter(Boolean))],
     memo: String(x.memo || ""),
-    added: +x.added || now()
+    added: +x.added || now(),
+    tmdbId: +x.tmdbId > 0 ? +x.tmdbId : null,
+    updated: +x.updated || +x.added || now()
   });
 }
 
 /* ==================== 파생 조회 ==================== */
 const item = (id) => db.items.find(x => x.id === id);
+const epsOf = (x) => db.episodes.filter(e => e.itemId === x.id).sort(epSort);
 const dayOf = (x) => x.date || localDay(x.added);
 const yearOf = (x) => dayOf(x).slice(0, 4);
 const viewOf = (x) => x.status === "wish" ? "wish" : famOf(x.kind);
@@ -963,8 +1019,16 @@ const hit = (s, q) => String(s || "").toLowerCase().includes(q);
 function matchQ(x, q) {
   if (!q) return true;
   return hit(x.title, q) || hit(x.creator, q) || hit(x.review, q) || hit(x.memo, q)
-    || hit(x.where.join(" "), q) || hit(x.year, q) || hit(KINDS[x.kind].label, q);
+    || hit(x.where.join(" "), q) || hit(x.year, q) || hit(KINDS[x.kind].label, q)
+    || epsOf(x).some(e => hit(e.title, q) || hit(e.review, q));
 }
+/* 드라마 점수를 비워 두면 에피소드 평균을 대신 보여 준다 */
+function epAvg(x) {
+  const r = epsOf(x).map(e => e.rating).filter(isNum);
+  return r.length ? Math.round(mean(r) * 10) / 10 : null;
+}
+const scoreOf = (x) => isNum(x.rating) ? x.rating : epAvg(x);
+const epLabel = (e) => e.season != null && e.no != null ? `S${e.season}·E${e.no}` : e.no != null ? `${e.no}화` : e.season != null ? `시즌 ${e.season}` : "";
 const whereSuggestions = (kind, have) => WHERE_SUG[kind].filter(w => !have.includes(w));
 
 /* ==================== 점수 컨트롤 ====================
@@ -1144,7 +1208,7 @@ function recordsVisible() {
     && (ui.year === "all" || yearOf(x) === ui.year) && matchQ(x, q));
   const s = ui.sort;
   list.sort((a, b) => {
-    if (s === "rating") return (isNum(b.rating) ? b.rating : -1) - (isNum(a.rating) ? a.rating : -1) || dayOf(b).localeCompare(dayOf(a));
+    if (s === "rating") return (scoreOf(b) ?? -1) - (scoreOf(a) ?? -1) || dayOf(b).localeCompare(dayOf(a));
     if (s === "title") return a.title.localeCompare(b.title, "ko");
     return dayOf(b).localeCompare(dayOf(a)) || (b.added - a.added);
   });
@@ -1152,11 +1216,12 @@ function recordsVisible() {
 }
 const showKind = () => ui.view === "screen" && ui.sub === "all";
 function cardHTML(x) {
-  const sub = [showKind() ? KINDS[x.kind].label : "", x.creator].filter(Boolean).join(" · ");
+  const ne = epsOf(x).length;
+  const sub = [showKind() ? KINDS[x.kind].label : "", ne ? `${ne}화` : "", x.creator].filter(Boolean).join(" · ");
   return `<button class="card k-${x.kind}" data-id="${x.id}">
       ${coverHTML(x)}
       <div class="meta"><div class="t">${esc(x.title)}</div>
-        <div class="r"><span class="a">${esc(sub) || "&nbsp;"}</span>${scHTML(x.rating)}</div></div>
+        <div class="r"><span class="a">${esc(sub) || "&nbsp;"}</span>${scHTML(scoreOf(x))}</div></div>
     </button>`;
 }
 function rowHTML(x) {
@@ -1167,10 +1232,10 @@ function rowHTML(x) {
       ${coverHTML(x, true)}
       <div class="lmain">
         <div class="t">${esc(x.title)}${showKind() ? ` <span class="kchip">${KINDS[x.kind].label}</span>` : ""}</div>
-        <div class="a">${esc([x.creator, x.where.join(" · ")].filter(Boolean).join(" · ")) || "&nbsp;"}</div>
+        <div class="a">${esc([epsOf(x).length ? `에피소드 ${epsOf(x).length}` : "", x.creator, x.where.join(" · ")].filter(Boolean).join(" · ")) || "&nbsp;"}</div>
         ${x.review.trim() ? `<div class="rv">${esc(x.review)}</div>` : ""}
       </div>
-      ${scHTML(x.rating)}
+      ${scHTML(scoreOf(x))}
     </button>`;
 }
 function doingHTML(list, F) {
@@ -1180,13 +1245,13 @@ function doingHTML(list, F) {
       ${coverHTML(x, true)}
       <div class="dm">
         <div class="t">${esc(x.title)}</div>
-        <div class="s">${esc([showKind() ? KINDS[x.kind].label : "", x.creator, sinceText(x.started)].filter(Boolean).join(" · ")) || "&nbsp;"}</div>
+        <div class="s">${esc([showKind() ? KINDS[x.kind].label : "", x.creator, epsOf(x).length ? `에피소드 ${epsOf(x).length}` : sinceText(x.started)].filter(Boolean).join(" · ")) || "&nbsp;"}</div>
         <button class="btn sm accent dfin" data-id="${x.id}">${KINDS[x.kind].finish}</button>
       </div>
     </div>`).join("")}</div></section>`;
 }
 function countText(list, unit) {
-  const r = list.map(x => x.rating).filter(isNum);
+  const r = list.map(scoreOf).filter(isNum);
   return `${list.length}${unit}${r.length ? ` · 평균 ${fmt(mean(r))}` : ""}`;
 }
 function renderRecords() {
@@ -1361,7 +1426,7 @@ function finish(x) {
 
 /* ==================== 시트 ==================== */
 function openSheet(id) {
-  ui.sheet = id;
+  ui.sheet = id; ui.openEp = null; epPick = null;
   document.body.classList.add("modal");
   el.sheet.classList.add("show");
   el.scrim.classList.add("show");
@@ -1370,7 +1435,7 @@ function openSheet(id) {
 }
 function closeSheet() {
   if (!ui.sheet) return;
-  ui.sheet = null;
+  ui.sheet = null; ui.openEp = null; epPick = null;
   el.sheet.classList.remove("show");
   if (!el.dlg.classList.contains("show")) document.body.classList.remove("modal");
   el.scrim.classList.remove("show");
@@ -1439,6 +1504,169 @@ function bindWhereEditor(root, getList, setList) {
   inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); addTyped(); } });
 }
 
+/* ==================== 에피소드 (드라마) ====================
+   블랙 미러 같은 옴니버스물을 한 편씩 기록한다. 줄을 누르면 펼쳐서 고친다. */
+let epPick = null; // TMDB에서 고르기 상태 { itemId, tvId, seasons, season, list, busy, err }
+function rateHint(x) {
+  const avg = x.kind === "drama" ? epAvg(x) : null;
+  if (avg !== null && !isNum(x.rating)) return `비워 두면 에피소드 평균 ${fmt(avg)}점으로 보입니다`;
+  return "숫자를 좌우로 끌거나 슬라이더로 · 0.5점 단위";
+}
+function epHeadHTML(e, open) {
+  const first = e.review.trim().split("\n")[0];
+  return `<span class="epno">${esc(epLabel(e)) || "–"}</span>
+    <span class="ept">${esc(e.title || "제목 없음")}${first && !open ? `<small>${esc(first)}</small>` : ""}</span>
+    ${scHTML(e.rating)}`;
+}
+function episodesHTML(x) {
+  const eps = epsOf(x), n = eps.length, avg = epAvg(x);
+  return `
+    <div class="sec" id="epSec">
+      <h3>에피소드${n ? ` · ${n}편` : ""}<span id="epAvg">${avg !== null ? ` · 평균 ${fmt(avg)}` : ""}</span></h3>
+      ${n ? "" : `<p class="hint" style="margin:-4px 0 10px">옴니버스처럼 한 편씩 따로 남기고 싶을 때 씁니다. 안 써도 됩니다.</p>`}
+      <div class="eplist">${eps.map(e => {
+        const open = ui.openEp === e.id;
+        return `<div class="eprow ${open ? "open" : ""}" data-e="${e.id}">
+          <button type="button" class="ephead" data-e="${e.id}" aria-expanded="${open}">${epHeadHTML(e, open)}</button>
+          ${open ? `<div class="epedit">
+            <div class="inrow">
+              <label class="epn">시즌<input class="tin" data-ef="season" inputmode="numeric" value="${e.season ?? ""}" autocomplete="off"></label>
+              <label class="epn">화<input class="tin" data-ef="no" inputmode="numeric" value="${e.no ?? ""}" autocomplete="off"></label>
+              <input class="tin ept-in" data-ef="title" value="${esc(e.title)}" placeholder="에피소드 제목" autocomplete="off">
+            </div>
+            <div class="raterow sm">
+              <div class="rangewrap"><input type="range" id="epRng" min="0.5" max="10" step="0.5" value="${e.rating ?? 0.5}" aria-label="에피소드 점수 슬라이더"></div>
+              <input class="numin" id="epNum" inputmode="decimal" value="${isNum(e.rating) ? fmt(e.rating) : ""}" placeholder="–" aria-label="에피소드 점수">
+            </div>
+            <textarea class="review" data-ef="review" placeholder="이 에피소드는 어땠는지">${esc(e.review)}</textarea>
+            <div class="inrow"><span class="hint">본 날</span>${dateFieldHTML("epDate", e.date)}</div>
+            <div class="rate-actions">
+              <button type="button" class="btn sm" id="epFold">접기</button>
+              <button type="button" class="btn ghost sm del" id="epDel" style="margin-left:auto">이 에피소드 삭제</button>
+            </div>
+          </div>` : ""}
+        </div>`;
+      }).join("")}</div>
+      <div class="rate-actions" style="margin-top:12px">
+        <button type="button" class="btn" id="epAdd">에피소드 추가</button>
+        ${skeys.tmdb.trim() ? `<button type="button" class="btn ghost" id="epPickBtn">TMDB에서 고르기</button>` : ""}
+      </div>
+      <div id="epPickBox"></div>
+    </div>`;
+}
+function refreshEpAvg(x) {
+  const a = $("#epAvg"), h = $("#rateHint"), avg = epAvg(x);
+  if (a) a.textContent = avg !== null ? ` · 평균 ${fmt(avg)}` : "";
+  if (h) h.textContent = rateHint(x);
+}
+function bindEpisodes(x) {
+  $$(".ephead", el.sheetBody).forEach(b => b.onclick = () => {
+    const id = b.dataset.e;
+    ui.openEp = ui.openEp === id ? null : id;
+    renderSheet();
+  });
+  $("#epAdd").onclick = () => {
+    mark("에피소드 추가");
+    const eps = epsOf(x), last = eps[eps.length - 1];
+    const e = mkEp({ itemId: x.id, season: last ? last.season : 1, no: last && last.no != null ? last.no + 1 : 1, date: today() });
+    db.episodes.push(e);
+    ui.openEp = e.id;
+    save(); renderSheet();
+    const t = $('.eprow.open [data-ef="title"]'); if (t) t.focus();
+  };
+  if ($("#epPickBtn")) $("#epPickBtn").onclick = () => epPick && epPick.itemId === x.id ? (epPick = null, paintEpPick(x)) : openEpPick(x);
+  paintEpPick(x);
+  const row = $(".eprow.open", el.sheetBody);
+  if (!row) return;
+  const e = db.episodes.find(y => y.id === row.dataset.e);
+  if (!e) return;
+  const head = $(".ephead", row);
+  const repaint = () => { head.innerHTML = epHeadHTML(e, true); };
+  $$("[data-ef]", row).forEach(i => i.addEventListener("input", () => {
+    const f = i.dataset.ef;
+    if (f === "season" || f === "no") { const k = parseInt(i.value, 10); e[f] = Number.isFinite(k) && k >= 0 ? k : null; }
+    else e[f] = i.value;
+    save(); repaint();
+  }));
+  autoGrow($('[data-ef="review"]', row));
+  bindRangePair($("#epRng"), $("#epNum"), () => e.rating, (v) => { e.rating = v; save(); repaint(); refreshEpAvg(x); });
+  bindDateField("epDate", () => e.date, (v) => { e.date = v; save(); });
+  $("#epFold").onclick = () => { ui.openEp = null; renderSheet(); };
+  $("#epDel").onclick = () => {
+    if (e.review.trim() && !confirm(`"${e.title || epLabel(e)}" 에피소드를 지울까요? 적어 둔 감상도 같이 지워집니다.\n(Ctrl+Z로 되돌릴 수 있습니다)`)) return;
+    mark("에피소드 삭제");
+    db.episodes = db.episodes.filter(y => y.id !== e.id);
+    ui.openEp = null;
+    save(); renderSheet();
+    toast("에피소드를 지웠습니다 · Ctrl+Z로 되돌리기");
+  };
+}
+/* TMDB에서 시즌을 골라 에피소드 제목을 가져온다. tmdbId가 없으면 제목으로 한 번 찾는다. */
+async function openEpPick(x) {
+  epPick = { itemId: x.id, busy: true };
+  paintEpPick(x);
+  try {
+    let tvId = x.tmdbId;
+    if (!tvId) {
+      const r = await searchScreen("drama", x.title);
+      if (!r.length) throw new Error("TMDB에서 이 드라마를 찾지 못했습니다");
+      tvId = r[0].tmdb; x.tmdbId = tvId; save();
+    }
+    const d = await tmdb(`/tv/${tvId}`);
+    const seasons = (d.seasons || []).filter(se => se.episode_count).map(se => ({ n: se.season_number, name: se.name || `시즌 ${se.season_number}`, count: se.episode_count }));
+    if (!seasons.length) throw new Error("시즌 정보가 없습니다");
+    const eps = epsOf(x), lastS = eps.length ? eps[eps.length - 1].season : null;
+    const def = seasons.find(se => se.n === lastS) || seasons.find(se => se.n === 1) || seasons[0];
+    if (!epPick || epPick.itemId !== x.id) return;
+    epPick = { itemId: x.id, tvId, seasons, season: def.n, list: null, busy: false };
+    await loadEpSeason(x);
+  } catch (e) {
+    if (epPick && epPick.itemId === x.id) { epPick = { itemId: x.id, err: e.message }; paintEpPick(x); }
+  }
+}
+async function loadEpSeason(x) {
+  const p = epPick;
+  p.busy = true; p.list = null; p.err = "";
+  paintEpPick(x);
+  try {
+    const d = await tmdb(`/tv/${p.tvId}/season/${p.season}`);
+    p.list = (d.episodes || []).map(e => ({ no: e.episode_number, title: e.name || "", air: (e.air_date || "").slice(0, 4) }));
+  } catch (e) { p.err = e.message; }
+  p.busy = false;
+  if (epPick === p) paintEpPick(x);
+}
+function paintEpPick(x) {
+  const box = $("#epPickBox");
+  if (!box) return;
+  const p = epPick;
+  if (!p || p.itemId !== x.id) { box.innerHTML = ""; return; }
+  const have = (no) => epsOf(x).some(e => e.season === p.season && e.no === no);
+  box.innerHTML = `<div class="eppick">
+    <div class="epp-head">
+      ${p.seasons ? `<select class="sel" id="eppSeason" aria-label="시즌">${p.seasons.map(se => `<option value="${se.n}"${se.n === p.season ? " selected" : ""}>${esc(se.name)} · ${se.count}편</option>`).join("")}</select>` : ""}
+      <span class="hint" style="flex:1">눌러서 추가</span>
+      <button type="button" class="btn ghost sm" id="eppClose">닫기</button>
+    </div>
+    ${p.err ? `<p class="hint" style="margin:6px 4px">${esc(p.err)}</p>`
+      : p.busy || !p.list ? `<p class="hint" style="margin:6px 4px"><span class="spin"></span> 불러오는 중…</p>`
+      : `<div class="epp-list">${p.list.map(e => `
+        <button type="button" class="epp-row ${have(e.no) ? "done" : ""}" data-no="${e.no}">
+          <span class="epno">E${e.no}</span><span class="t">${esc(e.title)}</span><span class="add">${have(e.no) ? "추가됨" : "+ 추가"}</span>
+        </button>`).join("")}</div>`}
+  </div>`;
+  $("#eppClose").onclick = () => { epPick = null; paintEpPick(x); };
+  const ss = $("#eppSeason");
+  if (ss) ss.onchange = () => { p.season = +ss.value; loadEpSeason(x); };
+  $$(".epp-row", box).forEach(b => b.onclick = () => {
+    const no = +b.dataset.no;
+    if (have(no)) return;
+    const e = p.list.find(y => y.no === no);
+    mark("에피소드 추가");
+    db.episodes.push(mkEp({ itemId: x.id, season: p.season, no, title: e ? e.title : "" }));
+    save(); renderSheet();
+  });
+}
+
 function renderSheet() {
   if (!ui.sheet) return;
   const x = item(ui.sheet);
@@ -1486,7 +1714,7 @@ function renderSheet() {
       </div>
       <div class="rate-actions">
         <button class="btn ghost sm" id="clearRate">지우기</button>
-        <span class="hint">숫자를 좌우로 끌거나 슬라이더로 · 0.5점 단위</span>
+        <span class="hint" id="rateHint">${rateHint(x)}</span>
       </div>
     </div>
 
@@ -1494,6 +1722,7 @@ function renderSheet() {
       <h3>감상</h3>
       <textarea class="review" id="rev" placeholder="어땠는지 자유롭게 적어 두세요. 쓰는 대로 바로 저장됩니다.">${esc(x.review)}</textarea>
     </div>
+    ${x.kind === "drama" ? episodesHTML(x) : ""}
 
     <div class="sec">
       <h3>날짜</h3>
@@ -1546,6 +1775,7 @@ function renderSheet() {
       if (from !== "num") num.value = isNum(v) ? fmt(v) : "";
       paintRange(rng, v);
       save();
+      refreshEpAvg(x);
     };
     bindRangePair(rng, num, () => x.rating, apply);
     bindScore(bigv, () => x.rating, (v) => apply(v, "big"));
@@ -1558,12 +1788,14 @@ function renderSheet() {
     }
   }
   if ($("#memo")) $("#memo").addEventListener("input", (e) => { x.memo = e.target.value; save(); });
+  if ($("#epSec")) bindEpisodes(x);
   bindWhereEditor($("#whereSec"), () => x.where, (list) => { x.where = list; save(); renderSheet(); });
   $("#editMeta").onclick = () => openForm({ editing: x });
   $("#delItem").onclick = () => {
     if (!confirm(`"${x.title}"을(를) 삭제할까요?\n\n삭제한 뒤에도 Ctrl+Z(맥은 ⌘Z)로 되돌릴 수 있습니다.`)) return;
     mark("삭제");
     db.items = db.items.filter(y => y.id !== x.id);
+    db.episodes = db.episodes.filter(e => e.itemId !== x.id);
     save(); closeSheet(); toast("삭제했습니다 · Ctrl+Z로 되돌리기");
   };
 }
@@ -1593,7 +1825,7 @@ let form = null;
 
 /* 임시 저장: 추가 폼은 "new", 수정 폼은 항목 id 로 하나씩. 저장하거나 "지우고 새로 쓰기"를 누르면 지운다. */
 const DRAFT_KEY = "media_drafts";
-const FORM_FIELDS = ["kind", "status", "title", "creator", "year", "cover", "started", "date", "rating", "review", "where", "memo"];
+const FORM_FIELDS = ["kind", "status", "title", "creator", "year", "cover", "started", "date", "rating", "review", "where", "memo", "tmdbId"];
 const draftKey = (f) => f.editing || "new";
 function drafts() { try { return JSON.parse(LS.get(DRAFT_KEY) || "{}") || {}; } catch (e) { return {}; } }
 function formSnap(f) { const o = {}; for (const k of FORM_FIELDS) o[k] = f[k]; return JSON.stringify(o); }
@@ -1625,9 +1857,9 @@ function openAdd() {
 function openForm(o) {
   const x = o.editing;
   form = x
-    ? { editing: x.id, kind: x.kind, status: x.status, title: x.title, creator: x.creator, year: x.year, cover: x.cover,
+    ? { editing: x.id, kind: x.kind, status: x.status, title: x.title, creator: x.creator, year: x.year, cover: x.cover, tmdbId: x.tmdbId,
         started: x.started, date: x.date, rating: x.rating, review: x.review, where: x.where.slice(), memo: x.memo }
-    : { editing: null, kind: o.kind || "book", status: o.status || "done", title: "", creator: "", year: "", cover: "",
+    : { editing: null, kind: o.kind || "book", status: o.status || "done", title: "", creator: "", year: "", cover: "", tmdbId: null,
         started: today(), date: today(), rating: null, review: "", where: [], memo: "" };
   form.sugg = null; form.picked = form.title; form.restored = 0;
   form.orig = formSnap(form);
@@ -1722,7 +1954,7 @@ function queueSuggest(delay) {
   clearTimeout(sugT);
   if (!f) return;
   const q = f.title.trim();
-  if (q !== f.picked) dropAutoCover(f);
+  if (q !== f.picked) { dropAutoCover(f); f.tmdbId = null; }
   if (q.length < 2 || q === f.picked || !canSearch(f.kind)) { f.sugg = null; return paintSuggest(); }
   sugT = setTimeout(async () => {
     const seq = ++sugSeq, kind = f.kind;
@@ -1763,7 +1995,7 @@ function paintSuggest() {
 async function pickSuggest(i) {
   const f = form, h = f.sugg && f.sugg.list[i];
   if (!h) return;
-  f.title = h.title; f.picked = h.title; f.autoCover = h.cover || "";
+  f.title = h.title; f.picked = h.title; f.autoCover = h.cover || ""; f.tmdbId = h.tv ? h.tmdb : null;
   if (h.creator) f.creator = h.creator;
   if (h.year) f.year = h.year;
   if (h.cover) f.cover = h.cover;
@@ -1799,7 +2031,7 @@ function submitForm() {
   const title = f.title.trim();
   if (!title) { toast("제목을 입력해 주세요"); $("#fTitle") && $("#fTitle").focus(); return; }
   dropDraft(draftKey(f));
-  const fields = { kind: f.kind, title, creator: f.creator.trim(), year: f.year.trim(), cover: f.cover.trim(), where: f.where };
+  const fields = { kind: f.kind, title, creator: f.creator.trim(), year: f.year.trim(), cover: f.cover.trim(), where: f.where, tmdbId: f.kind === "drama" ? f.tmdbId : null };
   if (f.status === "done") Object.assign(fields, { date: f.date, rating: f.rating, review: f.review });
   if (f.status === "doing") fields.started = f.started;
   if (f.status === "wish") fields.memo = f.memo;
@@ -1962,6 +2194,7 @@ async function ingest(incoming, name) {
   const byId = new Map(db.items.map(x => [x.id, x]));
   const byKey = new Map(db.items.map(x => [sameKey(x), x]));
   let add = 0, upd = 0;
+  const idMap = new Map();
   for (const x of inc.items) {
     const cur = byId.get(x.id) || byKey.get(sameKey(x));
     if (cur) {
@@ -1969,11 +2202,18 @@ async function ingest(incoming, name) {
       if (x.review) cur.review = x.review;
       for (const f of ["started", "date", "cover", "year", "creator", "memo"]) if (x[f] && !cur[f]) cur[f] = x[f];
       cur.where = [...new Set([...cur.where, ...x.where])];
+      idMap.set(x.id, cur.id);
       if (RANK[x.status] > RANK[cur.status]) cur.status = x.status;
       upd++;
     } else {
-      db.items.push(x); byId.set(x.id, x); byKey.set(sameKey(x), x); add++;
+      db.items.push(x); byId.set(x.id, x); byKey.set(sameKey(x), x); idMap.set(x.id, x.id); add++;
     }
+  }
+  const ek = (e) => e.itemId + "|" + (e.season ?? "") + "|" + (e.no ?? "") + "|" + akey(e.title);
+  const haveEp = new Set(db.episodes.map(ek));
+  for (const e of inc.episodes) {
+    const ne = Object.assign({}, e, { itemId: idMap.get(e.itemId) || e.itemId });
+    if (!haveEp.has(ek(ne)) && !db.episodes.some(y => y.id === ne.id)) { db.episodes.push(ne); haveEp.add(ek(ne)); }
   }
   save(true); render();
   if (ui.sheet) renderSheet();
