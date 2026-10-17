@@ -252,7 +252,10 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
 .review::placeholder{color:var(--text-3)}
 .review:focus,.tin:focus,.field input:focus,.field textarea:focus{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 60%,transparent)}
 .tin{flex:1;background:var(--field);border:none;border-radius:10px;padding:8px 11px;font-size:14px;outline:none;min-width:0}
-input[type=date].tin{flex:none;min-height:36px}
+.dpick{display:inline-flex;gap:6px;flex-wrap:wrap}
+.dpick .sel{padding-top:7px;padding-bottom:7px}
+.dpick .sel:disabled{opacity:.45}
+.drow{flex-wrap:wrap}
 .marks{display:flex;gap:6px;flex-wrap:wrap}
 .mark{font-size:12.5px;padding:3.5px 10px;border-radius:99px;background:var(--chip);font-weight:540;color:var(--text-2)}
 .mark:hover{background:var(--chip-h);color:var(--text)}
@@ -342,7 +345,7 @@ input[type=date].tin{flex:none;min-height:36px}
   .dcard{flex-basis:270px}
   .wlist{grid-template-columns:1fr}
   /* iOS는 16px보다 작은 입력칸에 초점이 가면 화면을 확대한다 */
-  .tin,.review,.numin,.field input:not([type=range]),.field textarea,.searchbox input{font-size:16px}
+  .tin,.review,.numin,.field input:not([type=range]),.field textarea,.searchbox input,.dpick .sel{font-size:16px}
 }
 @media (max-width:520px){
   .brand span{display:none}
@@ -858,7 +861,7 @@ function undo() {
      items: [{ id, kind: book|movie|drama|game, status: wish|doing|done,
                title, creator, year(작품 연도), cover,
                rating(0.5–10, 0.5 단위|null), review,
-               started(YYYY-MM-DD, 시작한 날), date(YYYY-MM-DD, 다 읽은/본/끝낸 날),
+               started(시작한 날), date(다 읽은/본/끝낸 날) — 둘 다 YYYY-MM-DD, 모르면 YYYY-MM 또는 YYYY,
                where: [볼 수 있는 곳·플랫폼…], memo, added(ms) }] }
    스키마를 바꾸면 VERSION을 올리고 migrate()에 단계를 하나 추가한다.
    모르는 필드는 지우지 않고 그대로 둔다 (새 버전 페이지가 넣은 값을 지키려고). */
@@ -1328,6 +1331,41 @@ function closeSheet() {
   render();
 }
 
+/* 날짜 고르기: 연·월·일을 따로 고른다. 월·일은 "모름"으로 둘 수 있다 ("2014", "2014-03", "2014-03-21"). */
+const daysIn = (y, m) => new Date(+y, +m, 0).getDate();
+function dateFieldHTML(id, val) {
+  let [y, m, d] = String(val || "").split("-");
+  const cy = new Date().getFullYear();
+  const years = [];
+  for (let v = cy + 1; v >= 1950; v--) years.push(String(v));
+  if (y && !years.includes(y)) years.push(y);
+  const dim = y && m ? daysIn(y, m) : 31;
+  const opt = (v, label, cur) => `<option value="${v}"${v === cur ? " selected" : ""}>${label}</option>`;
+  return `<span class="dpick" id="${id}">
+    <select class="sel" data-p="y" aria-label="연도">${opt("", "연도", y || "")}${years.map(v => opt(v, v + "년", y)).join("")}</select>
+    <select class="sel" data-p="m" aria-label="월"${y ? "" : " disabled"}>${opt("", "월 모름", m || "")}${[...Array(12)].map((_, i) => opt(pad(i + 1), (i + 1) + "월", m)).join("")}</select>
+    <select class="sel" data-p="d" aria-label="일"${m ? "" : " disabled"}>${opt("", "일 모름", d || "")}${[...Array(dim)].map((_, i) => opt(pad(i + 1), (i + 1) + "일", d)).join("")}</select>
+  </span>`;
+}
+function bindDateField(id, get, set) {
+  const host = $("#" + id);
+  if (!host) return;
+  $$("select", host).forEach(sel => sel.onchange = () => {
+    const [y, m, d0] = $$("select", host).map(x => x.value);
+    let v = "";
+    if (y) {
+      v = y;
+      if (m) {
+        v += "-" + m;
+        if (d0) v += "-" + pad(Math.min(+d0, daysIn(y, m)));
+      }
+    }
+    set(v);
+    host.outerHTML = dateFieldHTML(id, get());
+    bindDateField(id, get, set);
+  });
+}
+
 /* 감상 칸은 쓰는 만큼 늘어난다 */
 function autoGrow(ta) {
   const fit = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + 2 + "px"; };
@@ -1414,11 +1452,10 @@ function renderSheet() {
     <div class="sec">
       <h3>날짜</h3>
       <div class="drow"><span>시작한 날</span>
-        <span class="inrow"><input type="date" class="tin" id="startIn" value="${fullDate(x.started) ? x.started : ""}" aria-label="시작한 날"></span></div>
+        <span class="inrow">${dateFieldHTML("startIn", x.started)}</span></div>
       ${st === "done" ? `<div class="drow"><span>${k.endDate}</span>
-        <span class="inrow"><input type="date" class="tin" id="dateIn" value="${fullDate(x.date) ? x.date : ""}" aria-label="${k.endDate}">
-        <button class="btn ghost sm" id="dateToday">오늘</button></span></div>
-        ${x.date && !fullDate(x.date) ? `<p class="hint" style="margin:6px 0 0">지금 값: ${esc(fmtDate(x.date))}</p>` : ""}` : ""}
+        <span class="inrow">${dateFieldHTML("dateIn", x.date)}
+        <button class="btn ghost sm" id="dateToday">오늘</button></span></div>` : ""}
     </div>` : ""}
 
     <div class="sec" id="whereSec">
@@ -1468,9 +1505,9 @@ function renderSheet() {
     bindScore(bigv, () => x.rating, (v) => apply(v, "big"));
     $("#clearRate").onclick = () => apply(null);
     $("#rev").addEventListener("input", (e) => { x.review = e.target.value; save(); });
-    $("#startIn").addEventListener("change", (e) => { x.started = e.target.value; save(); });
+    bindDateField("startIn", () => x.started, (v) => { x.started = v; save(); });
     if ($("#dateIn")) {
-      $("#dateIn").addEventListener("change", (e) => { x.date = e.target.value; save(); });
+      bindDateField("dateIn", () => x.date, (v) => { x.date = v; save(); });
       $("#dateToday").onclick = () => { x.date = today(); save(); renderSheet(); };
     }
   }
@@ -1575,8 +1612,8 @@ function renderForm() {
       <label class="field"><span>작품 연도</span><input data-f="year" value="${esc(f.year)}" inputmode="numeric" placeholder="예: 2024" autocomplete="off"></label>
     </div>
     ${st === "done" ? `
-      <div class="two stack">
-        <label class="field"><span>${k.endDate}</span><input type="date" data-f="date" value="${fullDate(f.date) ? esc(f.date) : ""}"></label>
+      <div>
+        <div class="field"><span>${k.endDate}</span>${dateFieldHTML("fDate", f.date)}</div>
         <div class="field"><span>점수</span>
           <div class="raterow sm">
             <div class="rangewrap"><input type="range" id="fRng" min="0.5" max="10" step="0.5" value="${f.rating ?? 0.5}" aria-label="점수 슬라이더"></div>
@@ -1586,7 +1623,7 @@ function renderForm() {
       </div>
       <label class="field"><span>감상</span><textarea class="review" data-f="review" rows="4" placeholder="어땠는지 자유롭게 적어 두세요. 한 줄이어도, 아주 길어도 괜찮아요.">${esc(f.review)}</textarea></label>`
     : st === "doing" ? `
-      <label class="field"><span>시작한 날</span><input type="date" data-f="started" value="${fullDate(f.started) ? esc(f.started) : ""}"></label>` : ""}
+      <div class="field"><span>시작한 날</span>${dateFieldHTML("fStarted", f.started)}</div>` : ""}
     <div class="field" id="fWhere"><span>${whereLabel(f.kind, st)}</span>${whereEditorHTML(f.where, f.kind)}</div>
     ${st === "wish" ? `<label class="field"><span>메모</span><textarea class="review" data-f="memo" rows="2" placeholder="누가 추천했는지, 언제까지 볼 수 있는지…">${esc(f.memo)}</textarea></label>` : ""}
     <div class="field"><span>표지 이미지 주소</span>
@@ -1616,6 +1653,8 @@ function renderForm() {
     openForm(x ? { editing: x, fresh: true } : { kind: f.kind, status: f.status, fresh: true });
   };
   if (st === "done") bindRangePair($("#fRng"), $("#fNum"), () => f.rating, (v) => { f.rating = v; saveDraft(); });
+  bindDateField("fDate", () => f.date, (v) => { f.date = v; saveDraft(); });
+  bindDateField("fStarted", () => f.started, (v) => { f.started = v; saveDraft(); });
   bindWhereEditor($("#fWhere"), () => f.where, (list) => { f.where = list; renderForm(); });
   bindSuggest();
   if ($("#fKeys")) $("#fKeys").onclick = () => openSearchConfig(true);
