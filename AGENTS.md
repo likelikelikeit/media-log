@@ -1,5 +1,8 @@
 # 작업 규약
 
+작업 시작 전에 `likelikelikeit/home-system`의 `SYSTEM.md`와 `CHANGELOG.md` 최근 항목을 읽는다.
+다른 서비스에 영향 주는 변경이면 `likelikelikeit/home-system`의 관련 서비스 문서(`services/media-log.md`)를 갱신하고 `CHANGELOG.md`에 변경자·영향받는 서비스·필요한 조치를 한 줄 남긴다.
+
 ## 무엇을 만드나
 도서, 드라마/영화, 게임을 기록하는 개인 페이지. 메인 취미가 아니라서 **항목 수가 적다**(연 수십 개 수준).
 대량 데이터용 기능(복잡한 통계, 페이지네이션 등)보다 빠르게 적고 찾는 쪽이 우선이다.
@@ -38,6 +41,11 @@
   - 구조 설명은 `DATA.md`에 있다(MCP 등 다른 도구가 기준으로 삼는다). 스키마를 바꾸면 `DATA.md`도 같이 고친다.
   - 다른 도구가 읽기 좋게 나눠 둔다: 드라마 에피소드는 작품 안이 아니라 최상위 `episodes`(`itemId`로 연결).
     작품·에피소드마다 `updated`(마지막으로 고친 때)를 저장할 때 자동으로 찍는다.
+
+## MCP (`mcp/`)
+- `mcp/`는 Cloudflare Worker `media-log-mcp`: 읽기 전용 MCP(`POST /mcp`)와 요약 API(`/api/items`, `/api/summary`). 설명은 `mcp/README.md`.
+- 도구 이름(`media_recent`·`media_list`·`media_search`·`media_get`·`media_stats`)과 인자, API 응답 모양은 다른 서비스(Agent Workshop, 통합 플랫폼)와의 약속이다. 바꾸면 home-system `services/media-log.md`·CHANGELOG를 같이 고친다.
+- 데이터 구조(`DATA.md`)를 바꾸면 `mcp/src/index.js`의 해석도 같이 고치고 `cd mcp && npm test`를 돌린다.
 
 ## 하지 말 것
 - 데이터를 이 공개 레포에 커밋하지 않는다 (이 레포는 public).

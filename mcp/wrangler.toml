@@ -1,0 +1,14 @@
+# Cloudflare Worker 설정. 이름이 이미 떠 있는 Worker와 같아서, 배포하면 그 Worker를 덮어쓴다(시크릿은 그대로 남는다).
+name = "media-log-mcp"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[vars]
+DATA_REPO = "likelikelikeit/media-data"
+DATA_PATH = "data.json"
+DATA_BRANCH = "main"
+
+# 시크릿(값은 여기에 쓰지 않는다):
+#   npx wrangler secret put MCP_KEY       # 작업실 등이 Authorization: Bearer 로 보내는 키
+#   npx wrangler secret put GITHUB_TOKEN  # media-data 읽기 전용 fine-grained 토큰 (Contents: Read)
