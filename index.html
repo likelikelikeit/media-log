@@ -540,11 +540,11 @@ const VERSION = 3;
 /* 종류별 말. 상태는 wish(위시) → doing(하는 중) → done(완료) */
 const KINDS = {
   book:  { label: "도서",   who: "저자",      fam: "books",  doing: "읽는 중", doneSt: "다 읽음", finish: "다 읽었어요", start: "읽기 시작",
-           endDate: "다 읽은 날", verb: "읽", where: ["어디서 읽을 수 있나", "읽는 곳", "읽은 곳"] },
+           endDate: "다 읽은 날", verb: "읽", where: ["읽을 곳/구매할 곳", "읽는 곳/구매한 곳", "읽은 곳/구매한 곳"] },
   movie: { label: "영화",   who: "감독",      fam: "screen", doing: "보는 중", doneSt: "다 봄",   finish: "다 봤어요",   start: "보기 시작",
-           endDate: "본 날",      verb: "보", where: ["어디서 볼 수 있나", "보는 곳", "본 곳"] },
+           endDate: "본 날",      verb: "보", where: ["볼 곳/구매할 곳", "보는 곳/구매한 곳", "본 곳/구매한 곳"] },
   drama: { label: "드라마", who: "감독", fam: "screen", doing: "보는 중", doneSt: "다 봄",   finish: "다 봤어요",   start: "보기 시작",
-           endDate: "다 본 날",   verb: "보", where: ["어디서 볼 수 있나", "보는 곳", "본 곳"] },
+           endDate: "다 본 날",   verb: "보", where: ["볼 곳/구매할 곳", "보는 곳/구매한 곳", "본 곳/구매한 곳"] },
   game:  { label: "게임",   who: "개발사",    fam: "games",  doing: "하는 중", doneSt: "완료",    finish: "다 했어요",   start: "시작했어요",
            endDate: "끝낸 날",    verb: "하", where: ["플랫폼", "플랫폼", "플랫폼"] }
 };
@@ -562,9 +562,9 @@ const whereLabel = (kind, st) => KINDS[kind].where[STATUSES.indexOf(st)];
 
 /* 어디서 읽고/보고/하는지 빠르게 고르는 후보. 이 밖의 곳은 직접 입력 칸에 적는다. */
 const WHERE_SUG = {
-  book:  ["서점", "밀리의서재", "도서관 및 학교", "기타"],
-  movie: ["넷플릭스", "극장", "TV", "유료 대여 및 구매", "기타"],
-  drama: ["넷플릭스", "TV", "유료 대여 및 구매", "기타"],
+  book:  ["서점", "코스트코", "밀리의서재", "도서관 및 학교", "기타"],
+  movie: ["넷플릭스", "극장", "TV", "학교", "유료 대여 및 구매", "기타"],
+  drama: ["넷플릭스", "TV", "학교", "유료 대여 및 구매", "기타"],
   game:  ["스팀", "모바일"]
 };
 
