@@ -5,13 +5,13 @@
 
 - 위치: 비공개 레포 `likelikelikeit/media-data`, 브랜치 `main`, 파일 `data.json`
 - 읽기: GitHub Contents API `GET /repos/likelikelikeit/media-data/contents/data.json` → `content`(base64, UTF-8)를 풀어 JSON으로 읽는다. 응답의 `sha`는 쓸 때 필요하다.
-- 지금 버전: **3**
+- 지금 버전: **4**
 
 ## 최상위
 
 ```jsonc
 {
-  "version": 3,
+  "version": 4,
   "updatedAt": 1760600000000,   // 마지막 저장 시각(ms). 기기끼리 누가 더 최신인지 이 값으로 가린다
   "settings": { "theme": "auto" },
   "items": [ /* 작품 */ ],
@@ -24,7 +24,7 @@
 | 필드 | 형식 | 뜻 |
 |---|---|---|
 | `id` | 문자열 | 바뀌지 않는 고유 id (`m…`) |
-| `kind` | `book` · `movie` · `drama` · `game` | 종류 |
+| `kind` | `book` · `movie` · `drama` · `game` · `concert` | 종류 |
 | `status` | `wish` · `doing` · `done` | 위시 → 하는 중(읽는/보는 중) → 완료 |
 | `title` | 문자열 | 제목 (비어 있지 않음) |
 | `creator` | 문자열 | 도서는 저자, 영화·드라마는 감독(드라마는 만든 사람일 수 있음), 게임은 개발사 |
@@ -41,6 +41,18 @@
 | `updated` | 숫자(ms) | 이 작품을 마지막으로 고친 때 |
 
 `where`에 자주 오는 값: 도서 `서점` `밀리의서재` `도서관 및 학교` `기타` / 영화·드라마 `넷플릭스` `극장` `TV` `유료 대여 및 구매` `기타` / 게임 `스팀` `모바일`. 직접 입력한 값도 올 수 있다.
+
+## 콘서트 (version 4)
+
+- `kind: concert`, `status: done`만 쓴다. 콘서트에는 위시리스트가 없다.
+- `title`: 공연명, `creator`: 아티스트, `where`: 공연장 또는 온라인 서비스.
+- `date`: 첫 관람일. 여러 회차를 보았으면 `attendance`에 전체 관람 회차를 그대로 적는다.
+- `eventType`: 콘서트·팬 콘서트·팬미팅·기타, `schedule`: 공연 기간·시간 원문.
+- `attendance`: 양일, 특정 날짜 등 관람 회차 원문, `ticketVendor`: 예매처.
+- `eventLink`: 공연 정보 URL, `sourceUrl`: 가져온 Notion 원본 URL. 모두 문자열, 없으면 빈 문자열.
+- `memo`: 온라인 시청 등 비고, `review`: 감상. 평가는 선택이며 `rating: null`을 허용한다.
+- v3 → v4는 기존 기록을 그대로 보존하고 새 종류·문자열 필드를 추가한다.
+- MCP/API는 콘서트 정보 6개 필드를 `concert` 객체로 반환한다. `doneByYear.unknown`은 연도 모름 개수다.
 
 ## episodes — 드라마 에피소드 한 편
 
@@ -61,7 +73,7 @@
 ## 규칙
 
 - **날짜 문자열:** `YYYY-MM-DD`, 모르면 `YYYY-MM` 또는 `YYYY`, 없으면 `""`. 예: 인터스텔라를 2014년에 봤는데 언제인지 모르면 `"2014"`.
-- **어느 해의 기록인가:** `date`의 연도. `date`가 비어 있으면 `added`의 날짜를 쓴다.
+- **어느 해의 기록인가:** 게임은 `started`, 다른 종류는 `date`의 연도. 기준 날짜가 없으면 연도 모름이며 MCP/API `recordYear`는 `null`이다. 추가한 해로 추정하지 않는다.
 - **드라마 점수:** 드라마의 `rating`이 `null`이고 점수 매긴 에피소드가 있으면, 화면에는 에피소드 점수 평균(소수 첫째 자리)을 보여 준다. 정렬과 평균도 이 값으로 한다.
 - **평균·통계:** 점수가 `null`인 것은 뺀다. 위시(`wish`)는 아직 안 본 것이라 기록 통계에 넣지 않는다.
 

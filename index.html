@@ -53,6 +53,13 @@
 }
 body[data-view="screen"]{--accent:var(--c-screen)}
 body[data-view="games"]{--accent:var(--c-game)}
+body[data-view="concerts"]{--accent:var(--c-concert,#a04791)}
+.k-concert{--kc:var(--c-concert,#a04791)}
+[data-theme="dark"]{--c-concert:#e9a6d8}
+.concert-info{display:grid;gap:8px;margin:12px 0;font-size:14px;overflow-wrap:anywhere}
+.concert-info b{color:var(--text-2);font-weight:500;margin-right:8px}
+.concert-info a{color:var(--accent)}
+#fKind{flex-wrap:wrap}
 body[data-view="wish"]{--accent:var(--c-wish)}
 .k-book{--kc:var(--c-book)} .k-movie,.k-drama{--kc:var(--c-screen)} .k-game{--kc:var(--c-game)}
 
@@ -443,6 +450,7 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
       <button data-view="books">도서</button>
       <button data-view="screen">드라마·영화</button>
       <button data-view="games">게임</button>
+      <button data-view="concerts">콘서트</button>
       <button data-view="wish">위시리스트</button>
     </nav>
     <div class="grow"></div>
@@ -498,6 +506,7 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6.5" width="19" height="13.5" rx="2.5"/><path d="M8 2.5l4 4 4-4"/></svg>영상</button>
     <button data-view="games">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10a5 5 0 0 1 4.9 6l-.7 3.4a2.6 2.6 0 0 1-4.4 1.2L14.6 15H9.4l-2.2 2.6a2.6 2.6 0 0 1-4.4-1.2L2.1 13A5 5 0 0 1 7 7z"/><path d="M7.5 10v3M6 11.5h3"/><circle cx="16" cy="11" r=".6" fill="currentColor"/><circle cx="17.6" cy="12.6" r=".6" fill="currentColor"/></svg>게임</button>
+    <button data-view="concerts"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>콘서트</button>
     <button data-view="wish">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg>위시</button>
   </div>
@@ -535,7 +544,7 @@ const KEY = "media_log_v1";
 const SNAP_KEYS = ["media_snap_0", "media_snap_1", "media_snap_2"];
 const SNAP_META = "media_snap_meta";
 const LAYOUT_KEY = "media_layout";
-const VERSION = 3;
+const VERSION = 4;
 
 /* 종류별 말. 상태는 wish(위시) → doing(하는 중) → done(완료) */
 const KINDS = {
@@ -545,15 +554,20 @@ const KINDS = {
            endDate: "본 날",      verb: "보", where: ["볼 곳/구매할 곳", "보는 곳/구매한 곳", "본 곳/구매한 곳"] },
   drama: { label: "드라마", who: "감독", fam: "screen", doing: "보는 중", doneSt: "다 봄",   finish: "다 봤어요",   start: "보기 시작",
            endDate: "다 본 날",   verb: "보", where: ["볼 곳/구매할 곳", "보는 곳/구매한 곳", "본 곳/구매한 곳"] },
+  concert: { label: "콘서트", who: "아티스트", fam: "concerts", doing: "관람 중", doneSt: "관람함", finish: "관람했어요", start: "관람", endDate: "관람일", verb: "보", where: ["공연장", "공연장", "공연장"] },
   game:  { label: "게임",   who: "개발사",    fam: "games",  doing: "하는 중", doneSt: "완료",    finish: "다 했어요",   start: "시작했어요",
            endDate: "끝낸 날",    verb: "하", where: ["플랫폼", "플랫폼", "플랫폼"] }
 };
 const KIND_IDS = Object.keys(KINDS);
+const CONCERT_FIELDS = ["eventType", "schedule", "attendance", "ticketVendor", "eventLink", "sourceUrl"];
+const EVENT_TYPES = ["콘서트", "팬 콘서트", "팬미팅", "기타"];
 const isScreen = (k) => k === "movie" || k === "drama";
 const STATUSES = ["wish", "doing", "done"];
+const statusesFor = (kind) => kind === "concert" ? ["done"] : STATUSES;
 const FAMS = {
   books:  { kinds: ["book"],           title: "도서",       unit: "권", past: "읽었습니다",  doing: "읽는 중" },
   screen: { kinds: ["movie", "drama"], title: "드라마·영화", unit: "편", past: "봤습니다",    doing: "보는 중" },
+  concerts: { kinds: ["concert"], title: "콘서트", unit: "회", past: "관람했습니다", doing: "관람 중" },
   games:  { kinds: ["game"],           title: "게임",       unit: "개", past: "시작했습니다",  doing: "하는 중" }
 };
 const famOf = (k) => KINDS[k].fam;
@@ -565,6 +579,7 @@ const WHERE_SUG = {
   book:  ["서점", "코스트코", "밀리의서재", "도서관 및 학교", "기타"],
   movie: ["넷플릭스", "극장", "TV", "학교", "유료 대여 및 구매", "기타"],
   drama: ["넷플릭스", "TV", "학교", "유료 대여 및 구매", "기타"],
+  concert: [],
   game:  ["스팀", "모바일"]
 };
 
@@ -572,6 +587,7 @@ let db = { version: VERSION, items: [], episodes: [], settings: { theme: "auto" 
 let ui = {
   view: "books", q: "",
   sort: "date", year: "all", sub: "all",   // 기록 화면
+  concertType: "", artist: "",
   wKind: "all", wWhere: "", wSort: "added", // 위시 화면
   layout: "grid",
   sheet: null                               // 열린 항목 id
@@ -941,9 +957,9 @@ function undo() {
 }
 
 /* ==================== 정규화 · 마이그레이션 ====================
-   data.json 구조 (version 3)
+   data.json 구조 (version 4)
    { version, updatedAt, settings: {theme},
-     items: [{ id, kind: book|movie|drama|game, status: wish|doing|done,
+     items: [{ id, kind: book|movie|drama|game|concert, status: wish|doing|done,
                title, creator, year(작품 연도), cover,
                rating(0.5–10, 0.5 단위|null), review,
                started(시작한 날), date(다 읽은/본/끝낸 날) — 둘 다 YYYY-MM-DD, 모르면 YYYY-MM 또는 YYYY,
@@ -963,6 +979,8 @@ function migrate(d) {
   }
   // v2 → v3: 최상위 episodes 목록과 tmdbId·updated가 생겼다. 기존 데이터는 빈 목록으로 시작한다.
   if (v < 3) { if (!Array.isArray(d.episodes)) d.episodes = []; d.version = 3; }
+  // v3 → v4: 콘서트 종류와 공연 메타데이터. 기존 기록은 그대로 유지한다.
+  if (v < 4) d.version = 4;
   return d;
 }
 function normalize(d) {
@@ -996,8 +1014,9 @@ function mkItem(x) {
   return Object.assign({}, x, {
     id: x.id || uid("m"),
     kind: KIND_IDS.includes(x.kind) ? x.kind : "book",
-    status: STATUSES.includes(x.status) ? x.status : "done",
+    status: x.kind === "concert" ? "done" : STATUSES.includes(x.status) ? x.status : "done",
     title: String(x.title || "").trim() || "제목 없음",
+    ...Object.fromEntries(CONCERT_FIELDS.map(k => [k, String(x[k] || "").trim()])),
     creator: String(x.creator || "").trim(),
     year: String(x.year || "").trim(),
     cover: String(x.cover || "").trim(),
@@ -1026,7 +1045,7 @@ const hit = (s, q) => String(s || "").toLowerCase().includes(q);
 function matchQ(x, q) {
   if (!q) return true;
   return hit(x.title, q) || hit(x.creator, q) || hit(x.review, q) || hit(x.memo, q)
-    || hit(x.where.join(" "), q) || hit(x.year, q) || hit(KINDS[x.kind].label, q)
+    || CONCERT_FIELDS.some(k => hit(x[k], q)) || hit(x.where.join(" "), q) || hit(x.year, q) || hit(KINDS[x.kind].label, q)
     || epsOf(x).some(e => hit(e.title, q) || hit(e.review, q));
 }
 /* 드라마 점수를 비워 두면 에피소드 평균을 대신 보여 준다 */
@@ -1196,7 +1215,7 @@ mq.addEventListener("change", () => { if (db.settings.theme === "auto") { applyT
 
 /* ==================== 화면 ==================== */
 /* 탭마다 바뀌는 아이콘 (Microsoft Fluent Emoji 3D, MIT). 로고와 브라우저 탭 아이콘에 쓴다. */
-const ICONS = { books: "icons/books.png", screen: "icons/screen.png", games: "icons/games.png", wish: "icons/wish.png" };
+const ICONS = { books: "icons/books.png", screen: "icons/screen.png", games: "icons/games.png", concerts: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#a04791"/><g fill="none" stroke="white" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 10v2a6 6 0 0 0 12 0v-2M12 18v3M9 21h6"/></g></svg>'), wish: "icons/wish.png" };
 function setIcon() {
   const ico = ICONS[ui.view], img = $("#brandIco");
   if (img.getAttribute("src") === ico) return;
@@ -1240,7 +1259,8 @@ function recordsVisible() {
   const q = ui.q.trim().toLowerCase();
   const kinds = recordKinds();
   const list = db.items.filter(x => x.status === "done" && kinds.includes(x.kind)
-    && (ui.year === "all" || yearOf(x) === ui.year) && matchQ(x, q));
+    && (ui.year === "all" || yearOf(x) === ui.year) && matchQ(x, q)
+    && (ui.view !== "concerts" || ((!ui.concertType || x.eventType === ui.concertType) && (!ui.artist || x.creator === ui.artist))));
   const s = ui.sort;
   list.sort((a, b) => {
     if (s === "rating") return (scoreOf(b) ?? -1) - (scoreOf(a) ?? -1) || dayOf(b).localeCompare(dayOf(a));
@@ -1252,7 +1272,7 @@ function recordsVisible() {
 const showKind = () => ui.view === "screen" && ui.sub === "all";
 function cardHTML(x) {
   const ne = epsOf(x).length;
-  const sub = [showKind() ? KINDS[x.kind].label : "", ne ? `${ne}화` : "", x.creator].filter(Boolean).join(" · ");
+  const sub = [x.kind === "concert" ? x.eventType : "", showKind() ? KINDS[x.kind].label : "", ne ? `${ne}화` : "", x.creator].filter(Boolean).join(" · ");
   return `<button class="card k-${x.kind}" data-id="${x.id}">
       ${coverHTML(x)}
       <div class="meta"><div class="t">${esc(x.title)}</div>
@@ -1267,7 +1287,7 @@ function rowHTML(x) {
       ${coverHTML(x, true)}
       <div class="lmain">
         <div class="t">${esc(x.title)}${showKind() ? ` <span class="kchip">${KINDS[x.kind].label}</span>` : ""}</div>
-        <div class="a">${esc([epsOf(x).length ? `에피소드 ${epsOf(x).length}` : "", x.creator, x.where.join(" · ")].filter(Boolean).join(" · ")) || "&nbsp;"}</div>
+        <div class="a">${esc([epsOf(x).length ? `에피소드 ${epsOf(x).length}` : "", x.creator, x.kind === "concert" ? x.eventType : "", x.where.join(" · "), x.kind === "concert" ? x.attendance : ""].filter(Boolean).join(" · ")) || "&nbsp;"}</div>
         ${x.review.trim() ? `<div class="rv">${esc(x.review)}</div>` : ""}
       </div>
       ${scHTML(scoreOf(x))}
@@ -1315,6 +1335,7 @@ function renderRecords() {
       const E = {
         books: ["첫 책을 기록해 보세요", "다 읽은 책, 읽고 있는 책을 점수와 감상과 함께 남겨 두는 곳입니다.", "책 기록하기"],
         screen: ["첫 작품을 기록해 보세요", "본 드라마와 영화, 보고 있는 시리즈를 점수와 감상과 함께 남겨 두는 곳입니다.", "작품 기록하기"],
+        concerts: ["첫 공연을 기록해 보세요", "콘서트·팬 콘서트·팬미팅을 관람일, 공연장, 감상과 함께 남겨 두세요.", "공연 기록하기"],
         games: ["첫 게임을 기록해 보세요", "끝낸 게임, 하고 있는 게임을 플랫폼과 함께 남겨 두는 곳입니다.", "게임 기록하기"]
       }[ui.view];
       body = emptyHTML(...E);
@@ -1336,6 +1357,8 @@ function renderRecords() {
     ${famAll.length ? `<div class="toolbar">
       ${ui.view === "screen" ? `<div class="seg sm" id="subSeg">
         <button data-s="all">전체</button><button data-s="movie">영화</button><button data-s="drama">드라마</button></div>` : ""}
+      ${ui.view === "concerts" ? `<select class="sel" id="concertTypeSel" aria-label="공연 구분"><option value="">모든 공연</option>${[...new Set(all.map(x => x.eventType).filter(Boolean))].map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}</select>
+      <select class="sel" id="artistSel" aria-label="아티스트"><option value="">모든 아티스트</option>${[...new Set(all.map(x => x.creator).filter(Boolean))].sort().map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}</select>` : ""}
       <select class="sel" id="sortSel" aria-label="정렬">
         <option value="date">${ui.view === "games" ? "시작한 날 순" : "최근 순"}</option><option value="rating">점수 높은 순</option><option value="title">제목순</option>
       </select>
@@ -1358,6 +1381,7 @@ function renderRecords() {
     b.classList.toggle("on", b.dataset.l === ui.layout);
     b.onclick = () => { ui.layout = b.dataset.l; LS.set(LAYOUT_KEY, ui.layout); renderRecords(); };
   });
+  for (const [id, key] of [["concertTypeSel", "concertType"], ["artistSel", "artist"]]) { const sel = $("#" + id); if (sel) { sel.value = ui[key]; sel.onchange = () => { ui[key] = sel.value; renderRecords(); }; } }
   const ss = $("#sortSel"); if (ss) { ss.value = ui.sort; ss.onchange = () => { ui.sort = ss.value; renderRecords(); }; }
   const ys = $("#yearSel"); if (ys) { ys.value = ui.year; ys.onchange = () => { ui.year = ys.value; renderRecords(); }; }
   $$(".card,.lrow", el.wrap).forEach(c => c.onclick = () => openSheet(c.dataset.id));
@@ -1444,7 +1468,7 @@ function renderWish() {
 
 /* 상태 바꾸기. 시작한 날·끝낸 날은 비어 있으면 오늘로 채운다. */
 function setStatus(x, st) {
-  if (!x || x.status === st) return;
+  if (!x || x.kind === "concert" || x.status === st) return;
   mark("상태 변경");
   x.status = st;
   if (st === "doing" && !x.started) x.started = today();
@@ -1525,7 +1549,7 @@ function whereEditorHTML(list, kind) {
     ${list.length ? `<div class="pills">${list.map(w => `<span class="pill">${esc(w)}<button type="button" class="px" data-w="${esc(w)}" aria-label="${esc(w)} 빼기">×</button></span>`).join("")}</div>` : ""}
     <div class="marks">${whereSuggestions(kind, list).map(w => `<button type="button" class="mark wsug" data-w="${esc(w)}">+ ${esc(w)}</button>`).join("")}</div>
     <div class="inrow" style="margin-top:9px">
-      <input class="tin wIn" placeholder="직접 입력 (예: 시네마테크, 친구한테 빌리기)" autocomplete="off">
+      <input class="tin wIn" placeholder="장소나 서비스를 직접 입력" autocomplete="off">
       <button type="button" class="btn wAdd">추가</button>
     </div>`;
 }
@@ -1723,9 +1747,10 @@ function renderSheet() {
           <div class="facts">${esc([x.year ? x.year + "년 작" : "", x.where.join(" · ")].filter(Boolean).join(" · "))}</div>
         </div>
       </div>
-      <div class="seg stseg" id="stSeg">${STATUSES.map(s => `<button data-s="${s}" class="${s === st ? "on" : ""}">${statusLabel(x.kind, s)}</button>`).join("")}</div>
+      <div class="seg stseg" id="stSeg">${statusesFor(x.kind).map(s => `<button data-s="${s}" class="${s === st ? "on" : ""}">${statusLabel(x.kind, s)}</button>`).join("")}</div>
     </div>
 
+    ${x.kind === "concert" ? concertInfoHTML(x) : ""}
     ${st === "wish" ? `
     <div class="sec">
       <div class="callout">
@@ -1762,8 +1787,8 @@ function renderSheet() {
 
     <div class="sec">
       <h3>날짜</h3>
-      <div class="drow"><span>시작한 날</span>
-        <span class="inrow">${dateFieldHTML("startIn", x.started)}</span></div>
+      ${x.kind === "concert" ? "" : `<div class="drow"><span>시작한 날</span>
+        <span class="inrow">${dateFieldHTML("startIn", x.started)}</span></div>`}
       ${st === "done" ? `<div class="drow"><span>${k.endDate}</span>
         <span class="inrow">${dateFieldHTML("dateIn", x.date)}
         <button class="btn ghost sm" id="dateToday">오늘</button></span></div>` : ""}
@@ -1776,7 +1801,7 @@ function renderSheet() {
 
     ${st === "wish" || x.memo ? `
     <div class="sec">
-      <h3>메모</h3>
+      <h3>${x.kind === "concert" ? "비고" : "메모"}</h3>
       <textarea class="review" id="memo" placeholder="누가 추천했는지, 왜 보고 싶은지, 언제 내려가는지…">${esc(x.memo)}</textarea>
     </div>` : ""}
 
@@ -1861,14 +1886,14 @@ let form = null;
 
 /* 임시 저장: 추가 폼은 "new", 수정 폼은 항목 id 로 하나씩. 저장하거나 "지우고 새로 쓰기"를 누르면 지운다. */
 const DRAFT_KEY = "media_drafts";
-const FORM_FIELDS = ["kind", "status", "title", "creator", "year", "cover", "started", "date", "rating", "review", "where", "memo", "tmdbId"];
+const FORM_FIELDS = [...CONCERT_FIELDS, "kind", "status", "title", "creator", "year", "cover", "started", "date", "rating", "review", "where", "memo", "tmdbId"];
 const draftKey = (f) => f.editing || "new";
 function drafts() { try { return JSON.parse(LS.get(DRAFT_KEY) || "{}") || {}; } catch (e) { return {}; } }
 function formSnap(f) { const o = {}; for (const k of FORM_FIELDS) o[k] = f[k]; return JSON.stringify(o); }
 function formDirty(f) {
   if (!f) return false;
   if (f.editing) return formSnap(f) !== f.orig;
-  return !!(f.title.trim() || f.creator.trim() || f.year.trim() || f.cover.trim() || f.review.trim() || f.memo.trim() || f.where.length || isNum(f.rating));
+  return !!(CONCERT_FIELDS.some(k => String(f[k] || "").trim()) || f.title.trim() || f.creator.trim() || f.year.trim() || f.cover.trim() || f.review.trim() || f.memo.trim() || f.where.length || isNum(f.rating));
 }
 function saveDraft() {
   if (!form) return;
@@ -1887,6 +1912,7 @@ function openAdd() {
   let kind = "book";
   if (ui.view === "screen") kind = ui.sub === "drama" ? "drama" : "movie";
   else if (ui.view === "games") kind = "game";
+  else if (ui.view === "concerts") kind = "concert";
   else if (ui.view === "wish") kind = ui.wKind === "books" ? "book" : ui.wKind === "games" ? "game" : "movie";
   openForm({ kind, status: ui.view === "wish" ? "wish" : "done" });
 }
@@ -1897,6 +1923,8 @@ function openForm(o) {
         started: x.started, date: x.date, rating: x.rating, review: x.review, where: x.where.slice(), memo: x.memo }
     : { editing: null, kind: o.kind || "book", status: o.status || "done", title: "", creator: "", year: "", cover: "", tmdbId: null,
         started: today(), date: today(), rating: null, review: "", where: [], memo: "" };
+  for (const key of CONCERT_FIELDS) form[key] = x ? x[key] || "" : "";
+  if (form.kind === "concert") { form.status = "done"; if (!x) form.date = ""; }
   form.sugg = null; form.picked = form.title; form.restored = 0;
   form.orig = formSnap(form);
   const d = o.fresh ? null : drafts()[draftKey(form)];
@@ -1906,6 +1934,23 @@ function openForm(o) {
   openDlg();
   setTimeout(() => { const t = $("#fTitle"); if (t && !x) t.focus(); }, 80);
 }
+
+/* 콘서트는 직접 입력하고, 같은 공연의 양일·온라인 관람도 글로 보존한다. */
+function concertFormHTML(f) {
+  return `<label class="field"><span>공연 일시</span><input data-f="schedule" value="${esc(f.schedule)}" placeholder="예: 2026. 5. 2 ~ 3 · 오후 6시"></label>
+    <label class="field"><span>관람 회차</span><input data-f="attendance" value="${esc(f.attendance)}" placeholder="예: 양일 / 토요일만 / 일요일은 온라인"></label>
+    <label class="field"><span>예매처</span><input data-f="ticketVendor" value="${esc(f.ticketVendor)}" list="ticketVendors"><datalist id="ticketVendors"><option value="멜론 티켓"><option value="NOL 티켓 (구 인터파크 티켓)"><option value="티켓링크"><option value="YES24 티켓"></datalist></label>
+    <label class="field"><span>공연 정보 링크</span><input data-f="eventLink" value="${esc(f.eventLink)}" placeholder="공식 페이지·나무위키 등" autocapitalize="off"></label>
+    <label class="field"><span>비고</span><textarea class="review" data-f="memo" rows="2" placeholder="온라인 시청, 좌석, 기억할 것 등">${esc(f.memo)}</textarea></label>
+    <p class="hint">공연명은 직접 적습니다. 여러 날 관람했다면 아래 관람일에는 첫 관람일을, 관람 회차에는 전체 일정을 적어 주세요.</p>`;
+}
+function concertInfoHTML(x) {
+  const rows = [["구분", x.eventType], ["공연 일시", x.schedule], ["관람 회차", x.attendance], ["예매처", x.ticketVendor]];
+  const link = (url, label) => /^https?:\/\//i.test(url || "") ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>` : "";
+  return `<div class="sec"><h3>공연 정보</h3><div class="concert-info">${rows.filter(([,v]) => v).map(([k,v]) => `<div><b>${k}</b>${esc(v)}</div>`).join("")}
+    ${link(x.eventLink, "공연 정보")}${link(x.sourceUrl, "Notion 원본")}</div></div>`;
+}
+
 function renderForm() {
   const f = form, k = KINDS[f.kind], st = f.status;
   el.dlg.className = `dlg show k-${f.kind}`;
@@ -1914,8 +1959,8 @@ function renderForm() {
     ${f.restored ? `<p class="draftnote">쓰다 만 내용을 불러왔습니다 <small>${whenText(f.restored)}</small>
       <button class="btn sm" id="fDrop">지우고 새로 쓰기</button></p>` : ""}
     <div class="segs">
-      <div class="seg sm" id="fKind">${KIND_IDS.map(id => `<button data-k="${id}">${KINDS[id].label}</button>`).join("")}</div>
-      ${f.editing ? "" : `<div class="seg sm" id="fStatus">${["done", "doing", "wish"].map(s => `<button data-s="${s}">${statusLabel(f.kind, s)}</button>`).join("")}</div>`}
+      <div class="seg sm" id="fKind">${KIND_IDS.filter(id => f.status !== "wish" || id !== "concert").map(id => `<button data-k="${id}">${KINDS[id].label}</button>`).join("")}</div>
+      ${f.editing || f.kind === "concert" ? "" : `<div class="seg sm" id="fStatus">${["done", "doing", "wish"].map(s => `<button data-s="${s}">${statusLabel(f.kind, s)}</button>`).join("")}</div>`}
     </div>
     <div class="field ac"><span>제목</span>
       <input id="fTitle" data-f="title" value="${esc(f.title)}" placeholder="${canSearch(f.kind) ? "제목을 치면 후보가 나옵니다" : "필수"}" autocomplete="off" aria-autocomplete="list" aria-controls="fSugg">
@@ -1924,8 +1969,9 @@ function renderForm() {
     ${f.kind === "game" ? `<p class="hint acnote">${canSearch(f.kind) ? "게임명으로 검색해 후보를 고르면 연도·표지가 채워집니다. 결과가 없으면 영문 제목으로도 찾아보세요." : `RAWG 키를 넣으면 게임 제목으로 검색하고 표지를 가져올 수 있습니다 · <button type="button" class="linkbtn" id="fKeys">검색 설정</button>`}</p>` : ""}
     <div class="two">
       <label class="field"><span>${k.who}</span><input data-f="creator" value="${esc(f.creator)}" autocomplete="off"></label>
-      <label class="field"><span>작품 연도</span><input data-f="year" value="${esc(f.year)}" inputmode="numeric" placeholder="예: 2024" autocomplete="off"></label>
+      ${f.kind === "concert" ? `<label class="field"><span>공연 구분</span><select class="sel" data-f="eventType"><option value="">미정</option>${EVENT_TYPES.map(t => `<option value="${t}"${f.eventType === t ? " selected" : ""}>${t}</option>`).join("")}</select></label>` : `<label class="field"><span>작품 연도</span><input data-f="year" value="${esc(f.year)}" inputmode="numeric" placeholder="예: 2024" autocomplete="off"></label>`}
     </div>
+    ${f.kind === "concert" ? concertFormHTML(f) : ""}
     ${st === "done" ? `
       <div>
         ${f.kind === "game" ? `<div class="field"><span>시작한 날</span>${dateFieldHTML("fStarted", f.started)}</div>` : `<div class="field"><span>${k.endDate}</span>${dateFieldHTML("fDate", f.date)}</div>`}
@@ -1958,13 +2004,13 @@ function renderForm() {
 
   $$("#fKind button").forEach(b => {
     b.classList.toggle("on", b.dataset.k === f.kind);
-    b.onclick = () => { if (b.dataset.k === f.kind) return; f.kind = b.dataset.k; f.sugg = null; f.picked = ""; dropAutoCover(f); renderForm(); if (f.title.trim()) queueSuggest(0); };
+    b.onclick = () => { if (b.dataset.k === f.kind) return; f.kind = b.dataset.k; if (f.kind === "concert") f.status = "done"; f.sugg = null; f.picked = ""; dropAutoCover(f); renderForm(); if (f.title.trim()) queueSuggest(0); };
   });
   $$("#fStatus button").forEach(b => {
     b.classList.toggle("on", b.dataset.s === f.status);
     b.onclick = () => { f.status = b.dataset.s; renderForm(); };
   });
-  $$("[data-f]", el.dlgBody).forEach(i => i.addEventListener("input", () => { f[i.dataset.f] = i.value; saveDraft(); }));
+  $$("[data-f]", el.dlgBody).forEach(i => i.addEventListener(i.tagName === "SELECT" ? "change" : "input", () => { f[i.dataset.f] = i.value; saveDraft(); }));
   $$("textarea.review", el.dlgBody).forEach(autoGrow);
   if ($("#fDrop")) $("#fDrop").onclick = () => {
     dropDraft(draftKey(f));
@@ -2076,6 +2122,8 @@ function submitForm() {
   if (!title) { toast("제목을 입력해 주세요"); $("#fTitle") && $("#fTitle").focus(); return; }
   dropDraft(draftKey(f));
   const fields = { kind: f.kind, title, creator: f.creator.trim(), year: f.year.trim(), cover: f.cover.trim(), where: f.where, tmdbId: f.kind === "drama" ? f.tmdbId : null };
+  for (const key of CONCERT_FIELDS) fields[key] = f[key] || "";
+  if (f.kind === "concert") fields.memo = f.memo;
   if (f.status === "done") {
     Object.assign(fields, { rating: f.rating, review: f.review });
     if (f.kind === "game") fields.started = f.started;
@@ -2122,7 +2170,7 @@ function exportJSON() {
   download(`감상기록_${today()}.json`, text, "application/json");
   showText("JSON 내보내기", text, `감상기록_${today()}.json`, "application/json");
 }
-const COLS = ["kind", "status", "title", "creator", "year", "started", "date", "rating", "review", "where", "memo", "cover"];
+const COLS = ["kind", "status", "title", "creator", "year", "started", "date", "rating", "review", "where", "memo", "cover", ...CONCERT_FIELDS];
 const cell = (v) => {
   v = v === null || v === undefined ? "" : String(v);
   return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
@@ -2130,7 +2178,7 @@ const cell = (v) => {
 function toCSV() {
   const rows = [COLS.join(",")];
   for (const x of db.items) {
-    rows.push([x.kind, x.status, x.title, x.creator, x.year, x.started, x.date, fmt(x.rating), x.review, x.where.join(" | "), x.memo, x.cover].map(cell).join(","));
+    rows.push([x.kind, x.status, x.title, x.creator, x.year, x.started, x.date, fmt(x.rating), x.review, x.where.join(" | "), x.memo, x.cover, ...CONCERT_FIELDS.map(k => x[k])].map(cell).join(","));
   }
   return "﻿" + rows.join("\r\n");
 }
@@ -2193,7 +2241,8 @@ const ALIAS = {
   memo: ["memo", "note", "메모", "비고"],
   cover: ["cover", "cover_url", "image", "표지", "포스터"]
 };
-const KIND_WORDS = { book: /^(book|책|도서|소설|만화)$/i, movie: /^(movie|film|영화)$/i, drama: /^(drama|tv|series|show|드라마|시리즈|예능|애니)$/i, game: /^(game|게임)$/i };
+for (const key of CONCERT_FIELDS) ALIAS[key] = [key.toLowerCase()];
+const KIND_WORDS = { concert: /^(concert|콘서트|공연|팬미팅|팬 콘서트)$/i, book: /^(book|책|도서|소설|만화)$/i, movie: /^(movie|film|영화)$/i, drama: /^(drama|tv|series|show|드라마|시리즈|예능|애니)$/i, game: /^(game|게임)$/i };
 function fromCSV(text) {
   const rows = parseCSV(text);
   if (rows.length < 2) throw new Error("내용이 없습니다");
@@ -2218,6 +2267,7 @@ function fromCSV(text) {
       title, creator: get(r, "creator"), year: get(r, "year"),
       started: day(get(r, "started")), date: day(get(r, "date")),
       rating: isNaN(rv) ? null : rv, review: get(r, "review"),
+      ...Object.fromEntries(CONCERT_FIELDS.map(k => [k, get(r, k)])),
       where: get(r, "where").split(/\s*[|,]\s*/), memo: get(r, "memo"), cover: get(r, "cover")
     });
   }
@@ -2702,7 +2752,7 @@ document.addEventListener("keydown", (e) => {
   const busy = ui.sheet || el.dlg.classList.contains("show");
   if (e.key === "/") { e.preventDefault(); $("#q").focus(); }
   else if (e.key.toLowerCase() === "n" && !busy) { e.preventDefault(); openAdd(); }
-  else if (["1", "2", "3", "4"].includes(e.key) && !busy) setView(["books", "screen", "games", "wish"][+e.key - 1]);
+  else if (["1", "2", "3", "4", "5"].includes(e.key) && !busy) setView(["books", "screen", "games", "concerts", "wish"][+e.key - 1]);
 });
 window.addEventListener("beforeunload", (e) => {
   if (dirty) { e.preventDefault(); e.returnValue = ""; }

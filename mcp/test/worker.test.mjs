@@ -94,7 +94,7 @@ test("목록의 감상은 줄이고 get은 전문", async () => {
   const g = await call("media_get", { id: "m1" });
   assert.equal(g.item.review.length, 400);
 });
-test("부분 날짜는 그대로, recordYear는 date→added", async () => {
+test("부분 날짜는 그대로, recordYear는 입력된 날짜만 사용", async () => {
   const g = await call("media_get", { id: "m1" });
   assert.equal(g.item.date, "2014"); assert.equal(g.item.recordYear, "2014");
   const w = await call("media_get", { id: "m4" });
@@ -147,7 +147,7 @@ test("API: /api/items 상한 200·q, /api/summary 모양", async () => {
   const s = await (await req("/api/summary", { headers: AUTH })).json();
   for (const k of ["version", "episodes", "total", "doing", "recentDone", "wish", "kinds"]) assert.ok(k in s, k);
   assert.equal(s.total, 5); assert.equal(s.wish, 1);
-  assert.deepEqual(s.kinds, { book: 3, movie: 1, drama: 1, game: 0 });
+  assert.deepEqual(s.kinds, { book: 3, movie: 1, drama: 1, game: 0, concert: 0 });
   assert.ok(Array.isArray(s.doing) && Array.isArray(s.recentDone));
 });
 test("GitHub 실패는 도구 isError / API 502", async () => {
@@ -160,4 +160,25 @@ test("GitHub 실패는 도구 isError / API 502", async () => {
 test("모르는 메서드와 도구", async () => {
   assert.equal((await rpc("foo/bar", {})).error.code, -32601);
   assert.equal((await rpc("tools/call", { name: "music_top" })).error.code, -32602);
+});
+
+test("콘서트 조회·검색·정보 보존, 미평가·연도 모름", async () => {
+  const data = structuredClone(DATA);
+  data.version = 4;
+  data.items.push({id:"c1",kind:"concert",status:"done",title:"Test concert",creator:"Test artist",date:"",rating:null,eventType:"팬미팅",schedule:"2026. 5. 1 ~ 2",attendance:"양일",ticketVendor:"티켓링크",eventLink:"https://example.com/show",sourceUrl:"https://example.com/source",added:Date.now()});
+  globalThis.fetch = async () => new Response(JSON.stringify(data));
+  const result = await call("media_list", {kind:"concert"});
+  assert.equal(result.total,1);
+  assert.equal(result.items[0].recordYear,null);
+  assert.equal(result.items[0].score,null);
+  assert.equal(result.items[0].concert.attendance,"양일");
+  assert.equal((await call("media_search",{query:"티켓링크",kind:"concert"})).total,1);
+  assert.equal((await call("media_stats",{kind:"concert"})).doneByYear.unknown,1);
+});
+test("게임 기록 연도는 시작일, 없는 연도는 추정하지 않는다", async () => {
+  const data = structuredClone(DATA);
+  data.items.push({id:"g1",kind:"game",status:"done",title:"Game",started:"2020",date:"2026",added:Date.now()});
+  globalThis.fetch = async () => new Response(JSON.stringify(data));
+  assert.equal((await call("media_get",{id:"g1"})).item.recordYear,"2020");
+  assert.equal((await call("media_get",{id:"m3"})).item.recordYear,null);
 });

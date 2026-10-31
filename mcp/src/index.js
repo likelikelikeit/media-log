@@ -1,22 +1,22 @@
-// media-log-mcp — 감상 기록(책·영화·드라마·게임) 읽기 전용 MCP + 요약 API.
-// 데이터: 비공개 레포 media-data의 data.json (구조는 ../../DATA.md, version 3).
+// media-log-mcp — 감상 기록(책·영화·드라마·게임·콘서트) 읽기 전용 MCP + 요약 API.
+// 데이터: 비공개 레포 media-data의 data.json (구조는 ../../DATA.md, version 4).
 // 약속(도구 이름·인자·API 모양)은 home-system 저장소 services/media-log.md가 원본이다.
 // 바꾸면 그 문서와 CHANGELOG, Agent Workshop 중계 목록을 같이 고쳐야 한다.
 
 const SERVER = { name: "media-log-mcp", version: "1.0.0" };
-const KNOWN_VERSION = 3;
+const KNOWN_VERSION = 4;
 const PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const KINDS = ["book", "movie", "drama", "game"];
+const KINDS = ["book", "movie", "drama", "game", "concert"];
 const STATUSES = ["wish", "doing", "done"];
-const KIND_KO = { book: "도서", movie: "영화", drama: "드라마", game: "게임" };
+const KIND_KO = { book: "도서", movie: "영화", drama: "드라마", game: "게임", concert: "콘서트" };
 const STATUS_KO = { wish: "위시", doing: "하는 중", done: "완료" };
 const CACHE_MS = 30_000;
 
-const INSTRUCTIONS = `형진의 감상 기록(책·영화·드라마·게임)이다. 읽기 전용이며, 고치거나 추가하는 일은 media-log 사이트에서 형진이 한다. 답은 한국어로 한다.
-- kind: book(도서)·movie(영화)·drama(드라마)·game(게임). status: wish(위시, 아직 안 봄)·doing(읽는/보는/하는 중)·done(완료).
+const INSTRUCTIONS = `형진의 감상 기록(책·영화·드라마·게임·콘서트)이다. 읽기 전용이며, 고치거나 추가하는 일은 media-log 사이트에서 형진이 한다. 답은 한국어로 한다.
+- kind: book(도서)·movie(영화)·drama(드라마)·game(게임)·concert(콘서트). 콘서트는 관람 기록만 남기고 위시를 만들지 않는다. status: wish(위시, 아직 안 봄)·doing(읽는/보는/하는 중)·done(완료).
 - 점수(rating)는 0.5–10, 0.5 단위. null이면 아직 매기지 않은 것이니 추측해서 채우지 않는다. 점수 등급표는 아직 정해지지 않았으니 숫자 그대로 전한다.
 - 드라마는 에피소드를 한 편씩 기록할 수 있다(옴니버스물). 드라마 자체 점수가 없고 에피소드 점수가 있으면 score에 에피소드 평균이 들어가고 scoreFrom이 "episodes"다. 이때는 "에피소드 평균"이라고 밝힌다.
-- 날짜는 YYYY-MM-DD, 모르면 YYYY-MM이나 YYYY만 있다. 모르는 월·일을 채워 말하지 않는다. 어느 해 기록인지는 date(끝낸 날)의 연도, 없으면 added(추가한 날)의 연도로 본다.
+- 날짜는 YYYY-MM-DD, 모르면 YYYY-MM이나 YYYY만 있다. 모르는 월·일을 채워 말하지 않는다. 게임은 started(시작일), 나머지는 date(관람·완료일)의 연도로 본다. 해당 날짜가 없으면 recordYear는 null이며 연도 모름이다. 추가한 연도로 추정하지 않는다.
 - 위시는 아직 안 본 것이라 평균 점수와 감상 완료 통계에 넣지 않는다.
 - review(감상)·memo(메모)는 형진이 쓴 글이다. 인용할 때 바꾸거나 덧붙이지 않는다. 목록 도구는 감상을 줄여서 주니, 전문이 필요하면 media_get을 쓴다.
 - 목록은 total과 offset을 확인하고, 첫 페이지만 보고 전체라고 말하지 않는다.`;
@@ -62,8 +62,9 @@ function prepare(raw) {
 const isNum = (v) => typeof v === "number" && !isNaN(v);
 const epSort = (a, b) => (a.season ?? 999) - (b.season ?? 999) || (a.no ?? 9999) - (b.no ?? 9999);
 const kstDay = (ms) => new Date((+ms || 0) + 9 * 3600e3).toISOString().slice(0, 10);
-const dayOf = (x) => x.date || kstDay(x.added);
-const yearOf = (x) => dayOf(x).slice(0, 4);
+const recordDate = (x) => (x.kind === "game" ? x.started : x.date) || "";
+const dayOf = (x) => recordDate(x) || (x.kind === "game" ? "" : kstDay(x.added));
+const yearOf = (x) => recordDate(x).slice(0, 4);
 const round1 = (n) => Math.round(n * 10) / 10;
 const mean = (a) => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
 const iso = (ms) => ms ? new Date(+ms).toISOString() : null;
@@ -90,13 +91,14 @@ function view(data, x, full) {
     status: x.status, statusKo: STATUS_KO[x.status] || x.status,
     title: x.title, creator: x.creator || "", year: x.year || "",
     rating: isNum(x.rating) ? x.rating : null, score, scoreFrom,
-    started: x.started || "", date: x.date || "", recordYear: x.status === "wish" ? null : yearOf(x),
+    started: x.started || "", date: x.date || "", recordYear: x.status === "wish" ? null : yearOf(x) || null,
     where: Array.isArray(x.where) ? x.where : [],
     review: full ? (x.review || "") : clip(x.review, 160),
     memo: full ? (x.memo || "") : clip(x.memo, 120),
     episodeCount: eps.length,
     added: iso(x.added), updated: iso(x.updated || x.added)
   };
+  if (x.kind === "concert") out.concert = Object.fromEntries(["eventType", "schedule", "attendance", "ticketVendor", "eventLink", "sourceUrl"].map(k => [k, x[k] || ""]));
   if (full) {
     out.cover = x.cover || "";
     out.tmdbId = x.tmdbId || null;
@@ -128,7 +130,7 @@ function sortItems(data, list, sort) {
 
 const hit = (s, q) => String(s || "").toLowerCase().includes(q);
 function matches(data, x, q) {
-  return hit(x.title, q) || hit(x.creator, q) || hit(x.review, q) || hit(x.memo, q) || hit((x.where || []).join(" "), q) || hit(x.year, q);
+  return ["eventType", "schedule", "attendance", "ticketVendor"].some(k => hit(x[k], q)) || hit(x.title, q) || hit(x.creator, q) || hit(x.review, q) || hit(x.memo, q) || hit((x.where || []).join(" "), q) || hit(x.year, q);
 }
 
 function filterItems(data, { kind, status, q }) {
@@ -160,7 +162,7 @@ const TOOLS = [
       type: "object",
       properties: {
         kind: { type: "string", enum: KINDS }, status: { type: "string", enum: STATUSES },
-        sort: { type: "string", enum: ["date", "rating", "added", "title"], default: "date", description: "date=끝낸 날(없으면 추가한 날) 최신순, rating=점수 높은 순" },
+        sort: { type: "string", enum: ["date", "rating", "added", "title"], default: "date", description: "date=게임은 시작일, 나머지는 관람·완료일 최신순, rating=점수 높은 순" },
         offset: { type: "integer", minimum: 0, default: 0 }, limit: { type: "integer", minimum: 1, maximum: 50, default: 20 }
       }
     }
@@ -257,7 +259,7 @@ async function callTool(name, args, env) {
       filter: { kind: kind || "전체", year: year || "전체" },
       done: done.length,
       doneByKind: count(done, x => x.kind),
-      doneByYear: year ? undefined : count(done, yearOf),
+      doneByYear: year ? undefined : count(done, x => yearOf(x) || "unknown"),
       rated: scored.length,
       averageScore: scored.length ? round1(mean(scored.map(s => s.score))) : null,
       scoreDistribution: dist,
