@@ -764,6 +764,7 @@ function stampUpdated() {
   for (const r of [...db.items, ...db.episodes]) if (old.has(r.id) && old.get(r.id) !== sig(r)) r.updated = now();
 }
 function save(immediate) {
+  if (tooNew) { setSave(statusText()); toast("새 버전 데이터입니다. 페이지를 새로고침해 주세요."); return; }
   stampUpdated();
   db.updatedAt = now();
   dirty = true;
@@ -985,6 +986,7 @@ function migrate(d) {
 }
 function normalize(d) {
   d = (d && typeof d === "object" && !Array.isArray(d)) ? d : { items: Array.isArray(d) ? d : [] };
+  if (+d.version > VERSION) { tooNew = true; throw new Error("더 새로운 버전의 데이터입니다. 페이지를 새로고침해 주세요."); }
   d = migrate(d);
   const out = Object.assign({}, d, {
     version: Math.max(VERSION, +d.version || 1),
@@ -1009,12 +1011,14 @@ function mkEp(e) {
   });
 }
 function mkItem(x) {
+  // 구버전 화면이 새 종류를 book으로 바꿔 로컬 저장한 Notion 공연 기록을 복구한다.
+  const kind = x.kind === "book" && x.sourceUrl && EVENT_TYPES.includes(x.eventType) ? "concert" : x.kind;
   const where = Array.isArray(x.where) ? x.where : String(x.where || "").split(/\s*[,/|]\s*/);
   const dt = cleanDate;
   return Object.assign({}, x, {
     id: x.id || uid("m"),
-    kind: KIND_IDS.includes(x.kind) ? x.kind : "book",
-    status: x.kind === "concert" ? "done" : STATUSES.includes(x.status) ? x.status : "done",
+    kind: KIND_IDS.includes(kind) ? kind : "book",
+    status: kind === "concert" ? "done" : STATUSES.includes(x.status) ? x.status : "done",
     title: String(x.title || "").trim() || "제목 없음",
     ...Object.fromEntries(CONCERT_FIELDS.map(k => [k, String(x[k] || "").trim()])),
     creator: String(x.creator || "").trim(),
