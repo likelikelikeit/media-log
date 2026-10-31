@@ -554,7 +554,7 @@ const STATUSES = ["wish", "doing", "done"];
 const FAMS = {
   books:  { kinds: ["book"],           title: "도서",       unit: "권", past: "읽었습니다",  doing: "읽는 중" },
   screen: { kinds: ["movie", "drama"], title: "드라마·영화", unit: "편", past: "봤습니다",    doing: "보는 중" },
-  games:  { kinds: ["game"],           title: "게임",       unit: "개", past: "끝냈습니다",  doing: "하는 중" }
+  games:  { kinds: ["game"],           title: "게임",       unit: "개", past: "시작했습니다",  doing: "하는 중" }
 };
 const famOf = (k) => KINDS[k].fam;
 const statusLabel = (kind, st) => st === "wish" ? "위시" : st === "doing" ? KINDS[kind].doing : KINDS[kind].doneSt;
@@ -1016,9 +1016,11 @@ function mkItem(x) {
 /* ==================== 파생 조회 ==================== */
 const item = (id) => db.items.find(x => x.id === id);
 const epsOf = (x) => db.episodes.filter(e => e.itemId === x.id).sort(epSort);
-const dayOf = (x) => x.date || localDay(x.added);
-// 관람·완료 연도는 입력한 날짜만 쓴다. 추가한 해로 추정하지 않는다.
-const yearOf = (x) => (x.date || "").slice(0, 4);
+// 게임은 시작일, 다른 기록은 관람·완료일을 기준으로 보여 준다.
+const recordDate = (x) => (x.kind === "game" ? x.started : x.date) || "";
+const dayOf = (x) => recordDate(x) || (x.kind === "game" ? "" : localDay(x.added));
+// 연도는 입력한 날짜만 쓴다. 추가한 해로 추정하지 않는다.
+const yearOf = (x) => recordDate(x).slice(0, 4);
 const viewOf = (x) => x.status === "wish" ? "wish" : famOf(x.kind);
 const hit = (s, q) => String(s || "").toLowerCase().includes(q);
 function matchQ(x, q) {
@@ -1258,7 +1260,7 @@ function cardHTML(x) {
     </button>`;
 }
 function rowHTML(x) {
-  const d = x.date;
+  const d = recordDate(x);
   const ld = !d ? "" : d.length === 10 ? `<b>${+d.slice(5, 7)}.${d.slice(8)}</b>` : d.length === 7 ? `<b>${+d.slice(5, 7)}월</b>` : "";
   return `<button class="lrow k-${x.kind}" data-id="${x.id}">
       <div class="ld">${ld}</div>
@@ -1300,7 +1302,7 @@ function renderRecords() {
   const grouped = ui.sort === "date" && ui.year === "all";
   const thisYear = String(new Date().getFullYear());
   const famAll = db.items.filter(x => famOf(x.kind) === ui.view);
-  const yearN = famAll.filter(x => x.status === "done" && yearOf(x) === thisYear).length;
+  const yearN = famAll.filter(x => (ui.view === "games" ? x.status !== "wish" : x.status === "done") && yearOf(x) === thisYear).length;
   const doingN = famAll.filter(x => x.status === "doing").length;
   const sub = famAll.length
     ? `${thisYear}년에 <b>${yearN}${F.unit}</b> ${F.past}${doingN ? ` · 지금 ${doingN}${F.unit} ${F.doing}` : ""}`
@@ -1335,7 +1337,7 @@ function renderRecords() {
       ${ui.view === "screen" ? `<div class="seg sm" id="subSeg">
         <button data-s="all">전체</button><button data-s="movie">영화</button><button data-s="drama">드라마</button></div>` : ""}
       <select class="sel" id="sortSel" aria-label="정렬">
-        <option value="date">최근 순</option><option value="rating">점수 높은 순</option><option value="title">제목순</option>
+        <option value="date">${ui.view === "games" ? "시작한 날 순" : "최근 순"}</option><option value="rating">점수 높은 순</option><option value="title">제목순</option>
       </select>
       <select class="sel" id="yearSel" aria-label="연도">
         <option value="all">모든 해</option>${years.map(y => `<option value="${y}">${y ? y + "년" : "연도 모름"}</option>`).join("")}
