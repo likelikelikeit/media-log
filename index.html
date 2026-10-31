@@ -448,6 +448,10 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
 .concert-table tr:last-child td{border-bottom:0}.concert-table tbody tr:hover{background:var(--chip)}
 .concert-open{text-align:left;font-weight:600;min-width:230px;max-width:330px;line-height:1.45}
 .entity-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.entity-list{display:grid;gap:8px;margin:16px 0}.entity-list span{padding:8px 10px;border-bottom:1px solid var(--sep)}
+.concert-heading{padding:8px 0 22px;border-bottom:1px solid var(--sep)}
+.concert-heading h1{margin:10px 0 6px;font-size:26px;line-height:1.3;letter-spacing:-.035em;overflow-wrap:anywhere}
+.concert-heading p{margin:0;color:var(--text-2);font-size:15px}
+@media(max-width:860px){.concert-heading{padding-top:58px}.concert-heading h1{font-size:23px}}
 </style>
 
 <div class="bar">
@@ -1851,7 +1855,7 @@ function renderSheet() {
   el.sheet.className = `sheet show k-${x.kind}`;
   el.sheet.style.setProperty("--accent", `var(--kc)`);
   el.sheetBody.innerHTML = `
-    <div class="hero ${x.cover ? "" : "noimg"}">
+    ${x.kind === "concert" ? `<header class="concert-heading"><span class="kchip">콘서트</span><h1>${esc(x.title)}</h1>${x.creator ? `<p>${esc(x.creator)}</p>` : ""}</header>` : `<div class="hero ${x.cover ? "" : "noimg"}">
       ${x.cover ? `<img class="wash" src="${esc(x.cover)}" alt="">` : ""}
       <div class="hero-row">
         ${coverHTML(x)}
@@ -1863,7 +1867,7 @@ function renderSheet() {
         </div>
       </div>
       <div class="seg stseg" id="stSeg">${statusesFor(x.kind).map(s => `<button data-s="${s}" class="${s === st ? "on" : ""}">${statusLabel(x.kind, s)}</button>`).join("")}</div>
-    </div>
+    </div>`}
 
     ${x.kind === "concert" ? concertInfoHTML(x) : ""}
     ${st === "wish" ? `
