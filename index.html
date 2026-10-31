@@ -485,6 +485,9 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
 </div>
 
 <main class="wrap" id="wrap"></main>
+<footer style="max-width:1180px;margin:0 auto;padding:0 28px 90px;font-size:12px;color:var(--text-2)">
+  게임 검색·이미지 제공: <a href="https://rawg.io" target="_blank" rel="noopener noreferrer" style="color:inherit">RAWG</a>
+</footer>
 
 <div class="tabbar">
   <div class="in">
@@ -1093,11 +1096,11 @@ function bindRangePair(rng, num, get, onChange) {
    제목을 치면 저자·감독·연도·표지 후보를 띄운다.
    - 도서: 카카오 책 검색(REST API 키). 키가 없으면 Google Books를 키 없이 시도한다(막히는 일이 잦다).
    - 영화·드라마: TMDB(API 키 또는 읽기 액세스 토큰).
-   - 게임: 쓸 만한 무료 검색이 없어 직접 적는다.
+   - 게임: RAWG(API 키). 후보를 고르면 연도·이미지를 채우고 개발사를 추가 조회한다.
    키는 이 브라우저에만 둔다(media_search_keys). 기록 파일·내보내기에는 들어가지 않는다. */
 const SK_KEY = "media_search_keys";
-let skeys = { kakao: "", tmdb: "" };
-function loadKeys() { try { skeys = Object.assign({ kakao: "", tmdb: "" }, JSON.parse(LS.get(SK_KEY) || "{}")); } catch (e) { /* 기본값 */ } }
+let skeys = { kakao: "", tmdb: "", rawg: "" };
+function loadKeys() { try { skeys = Object.assign({ kakao: "", tmdb: "", rawg: "" }, JSON.parse(LS.get(SK_KEY) || "{}")); } catch (e) { /* 기본값 */ } }
 function saveKeys() { LS.set(SK_KEY, JSON.stringify(skeys)); }
 const yearIn = (s) => (String(s || "").match(/\d{4}/) || [""])[0];
 async function getJSON(url, headers) {
@@ -1146,8 +1149,26 @@ async function screenCreator(h) {
     return (d.crew || []).filter(c => c.job === "Director").map(c => c.name).slice(0, 2).join(", ");
   } catch (e) { return ""; }
 }
-const canSearch = (kind) => kind === "book" || (isScreen(kind) && !!skeys.tmdb.trim());
-const searchTitles = (kind, q) => kind === "book" ? searchBooks(q) : searchScreen(kind, q);
+function rawg(path, params) {
+  const qs = new URLSearchParams(Object.assign({}, params || {}, { key: skeys.rawg.trim() }));
+  return getJSON(`https://api.rawg.io/api${path}?${qs}`);
+}
+async function searchGames(q) {
+  const d = await rawg("/games", { search: q, page_size: 8 });
+  return (d.results || []).slice(0, 8).map(g => ({
+    rawg: g.id, title: g.name || "", creator: "", year: yearIn(g.released),
+    sub: (g.platforms || []).map(p => p.platform && p.platform.name).filter(Boolean).join(", "),
+    cover: g.background_image || ""
+  }));
+}
+async function gameCreator(h) {
+  try {
+    const d = await rawg(`/games/${h.rawg}`);
+    return (d.developers || []).map(c => c.name).slice(0, 2).join(", ");
+  } catch (e) { return ""; }
+}
+const canSearch = (kind) => kind === "book" || (kind === "game" ? !!skeys.rawg.trim() : isScreen(kind) && !!skeys.tmdb.trim());
+const searchTitles = (kind, q) => kind === "book" ? searchBooks(q) : kind === "game" ? searchGames(q) : searchScreen(kind, q);
 
 /* ==================== 테마 ==================== */
 const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -1885,6 +1906,7 @@ function renderForm() {
       <input id="fTitle" data-f="title" value="${esc(f.title)}" placeholder="${canSearch(f.kind) ? "제목을 치면 후보가 나옵니다" : "필수"}" autocomplete="off" aria-autocomplete="list" aria-controls="fSugg">
       <div class="sugg" id="fSugg" role="listbox"></div></div>
     ${isScreen(f.kind) && !canSearch(f.kind) ? `<p class="hint acnote">TMDB 키를 넣으면 제목만 쳐도 감독·연도·포스터가 나옵니다 · <button type="button" class="linkbtn" id="fKeys">검색 설정</button></p>` : ""}
+    ${f.kind === "game" ? `<p class="hint acnote">${canSearch(f.kind) ? "게임명으로 검색해 후보를 고르면 연도·표지가 채워집니다. 결과가 없으면 영문 제목으로도 찾아보세요." : `RAWG 키를 넣으면 게임 제목으로 검색하고 표지를 가져올 수 있습니다 · <button type="button" class="linkbtn" id="fKeys">검색 설정</button>`}</p>` : ""}
     <div class="two">
       <label class="field"><span>${k.who}</span><input data-f="creator" value="${esc(f.creator)}" autocomplete="off"></label>
       <label class="field"><span>작품 연도</span><input data-f="year" value="${esc(f.year)}" inputmode="numeric" placeholder="예: 2024" autocomplete="off"></label>
@@ -1952,12 +1974,13 @@ function dropAutoCover(f) {
 function queueSuggest(delay) {
   const f = form;
   clearTimeout(sugT);
+  const seq = ++sugSeq;
   if (!f) return;
   const q = f.title.trim();
   if (q !== f.picked) { dropAutoCover(f); f.tmdbId = null; }
   if (q.length < 2 || q === f.picked || !canSearch(f.kind)) { f.sugg = null; return paintSuggest(); }
   sugT = setTimeout(async () => {
-    const seq = ++sugSeq, kind = f.kind;
+    const kind = f.kind;
     f.sugg = Object.assign({}, f.sugg || {}, { q, busy: true, err: "", idx: -1 });
     paintSuggest();
     let list = [], err = "", needKey = false;
@@ -1967,7 +1990,7 @@ function queueSuggest(delay) {
       needKey = kind === "book" && !skeys.kakao;
       if (needKey) err = "도서 검색이 막혀 있습니다. 카카오 키를 넣으면 잘 나옵니다.";
     }
-    if (form !== f || seq !== sugSeq || f.kind !== kind) return;
+    if (form !== f || seq !== sugSeq || f.kind !== kind || f.title.trim() !== q) return;
     f.sugg = { q, list, err, needKey, busy: false, idx: -1 };
     paintSuggest();
   }, delay ?? 320);
@@ -1995,15 +2018,17 @@ function paintSuggest() {
 async function pickSuggest(i) {
   const f = form, h = f.sugg && f.sugg.list[i];
   if (!h) return;
+  clearTimeout(sugT); ++sugSeq;
   f.title = h.title; f.picked = h.title; f.autoCover = h.cover || ""; f.tmdbId = h.tv ? h.tmdb : null;
   if (h.creator) f.creator = h.creator;
   if (h.year) f.year = h.year;
   if (h.cover) f.cover = h.cover;
   f.sugg = null;
   renderForm();
-  if (h.tmdb && !h.creator) {
-    const who = await screenCreator(h);
-    if (form === f && who && !f.creator.trim()) {
+  const pickedKind = f.kind;
+  if ((h.tmdb || h.rawg) && !h.creator) {
+    const who = h.rawg ? await gameCreator(h) : await screenCreator(h);
+    if (form === f && f.kind === pickedKind && f.title === h.title && f.picked === h.title && who && !f.creator.trim()) {
       f.creator = who; saveDraft();
       const inp = $('[data-f="creator"]'); if (inp) inp.value = who;
     }
@@ -2343,7 +2368,7 @@ function openSearchConfig(fromForm) {
   el.dlgTitle.textContent = "작품 검색";
   el.dlgBody.innerHTML = `
     <p style="margin:0 0 14px;color:var(--text-2);font-size:13.5px;line-height:1.6">
-      추가할 때 제목을 치면 저자·감독·연도·표지 후보를 띄우는 데 씁니다. 둘 다 무료이고,
+      추가할 때 제목을 치면 저자·감독·개발사·연도·표지 후보를 띄우는 데 씁니다.<br>
       키는 이 브라우저에만 저장되며 기록 파일이나 내보내기에는 들어가지 않습니다.</p>
     <label class="field"><span>카카오 REST API 키 · 도서</span>
       <input id="kKakao" type="password" value="${esc(skeys.kakao)}" placeholder="32자 영문·숫자" autocomplete="new-password" autocapitalize="off" spellcheck="false"></label>
@@ -2365,12 +2390,22 @@ function openSearchConfig(fromForm) {
         3. 나온 <b>API 키</b>나 <b>API 읽기 액세스 토큰</b> 중 하나를 위에 붙여 넣습니다.
       </div>
     </details>
+    <label class="field"><span>RAWG API 키 · 게임</span>
+      <input id="kRawg" type="password" value="${esc(skeys.rawg)}" placeholder="RAWG에서 발급받은 API 키" autocomplete="new-password" autocapitalize="off" spellcheck="false"></label>
+    <details style="margin:-4px 0 14px">
+      <summary style="font-size:13px;color:var(--text-2);cursor:pointer">RAWG 키 받는 법</summary>
+      <div style="font-size:13px;color:var(--text-2);line-height:1.7;padding:8px 0 0">
+        1. <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer">RAWG API 페이지</a>에서 가입·로그인하고 <b>Get API Key</b>를 누릅니다.<br>
+        2. 개인·비상업용 무료 플랜으로 신청한 API 키를 위에 붙여 넣습니다.<br>
+        3. 게임명으로 검색합니다. 한글 결과가 없으면 영문 제목으로도 찾아보세요.
+      </div>
+    </details>
     <div class="rate-actions">
       <button class="btn primary" id="kSave">${back ? "저장하고 돌아가기" : "저장"}</button>
       <button class="btn" id="kTest">시험해 보기</button>
     </div>
     <p class="hint" id="kHint" style="margin-top:10px"></p>`;
-  const read = () => { skeys.kakao = $("#kKakao").value.replace(/\s+/g, ""); skeys.tmdb = $("#kTmdb").value.replace(/\s+/g, ""); };
+  const read = () => { skeys.kakao = $("#kKakao").value.replace(/\s+/g, ""); skeys.tmdb = $("#kTmdb").value.replace(/\s+/g, ""); skeys.rawg = $("#kRawg").value.replace(/\s+/g, ""); };
   const hint = (t) => { $("#kHint").innerHTML = t; };
   $("#kTest").onclick = async () => {
     const before = Object.assign({}, skeys);
@@ -2383,6 +2418,10 @@ function openSearchConfig(fromForm) {
       try { const r = await searchScreen("movie", "기생충"); out.push(`영화·드라마 ${r.length ? "됩니다" : "결과 없음"}`); }
       catch (e) { out.push("영화·드라마: " + e.message); }
     } else out.push("영화·드라마: TMDB 키가 없습니다");
+    if (skeys.rawg) {
+      try { const r = await searchGames("Portal"); out.push(`게임 ${r.length ? "됩니다" : "결과 없음"}`); }
+      catch (e) { out.push("게임: " + e.message); }
+    } else out.push("게임: RAWG 키가 없습니다");
     skeys = before;
     hint(esc(out.join(" · ")));
   };
