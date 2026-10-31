@@ -1017,7 +1017,8 @@ function mkItem(x) {
 const item = (id) => db.items.find(x => x.id === id);
 const epsOf = (x) => db.episodes.filter(e => e.itemId === x.id).sort(epSort);
 const dayOf = (x) => x.date || localDay(x.added);
-const yearOf = (x) => dayOf(x).slice(0, 4);
+// 관람·완료 연도는 입력한 날짜만 쓴다. 추가한 해로 추정하지 않는다.
+const yearOf = (x) => (x.date || "").slice(0, 4);
 const viewOf = (x) => x.status === "wish" ? "wish" : famOf(x.kind);
 const hit = (s, q) => String(s || "").toLowerCase().includes(q);
 function matchQ(x, q) {
@@ -1322,7 +1323,7 @@ function renderRecords() {
     for (const y of years) {
       const g = list.filter(x => yearOf(x) === y);
       if (!g.length) continue;
-      body += `<div class="yhead"><h2>${y}</h2><span>${countText(g, F.unit)}</span><i></i></div>${block(g)}`;
+      body += `<div class="yhead"><h2>${y || "연도 모름"}</h2><span>${countText(g, F.unit)}</span><i></i></div>${block(g)}`;
     }
   } else {
     body = block(list);
@@ -1337,7 +1338,7 @@ function renderRecords() {
         <option value="date">최근 순</option><option value="rating">점수 높은 순</option><option value="title">제목순</option>
       </select>
       <select class="sel" id="yearSel" aria-label="연도">
-        <option value="all">모든 해</option>${years.map(y => `<option value="${y}">${y}년</option>`).join("")}
+        <option value="all">모든 해</option>${years.map(y => `<option value="${y}">${y ? y + "년" : "연도 모름"}</option>`).join("")}
       </select>
       <div class="seg sm" id="layoutSeg">
         <button data-l="grid" aria-label="격자로 보기" title="격자"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg></button>
@@ -1485,7 +1486,7 @@ function dateFieldHTML(id, val) {
   const dim = y && m ? daysIn(y, m) : 31;
   const opt = (v, label, cur) => `<option value="${v}"${v === cur ? " selected" : ""}>${label}</option>`;
   return `<span class="dpick" id="${id}">
-    <select class="sel" data-p="y" aria-label="연도">${opt("", "연도", y || "")}${years.map(v => opt(v, v + "년", y)).join("")}</select>
+    <select class="sel" data-p="y" aria-label="연도">${opt("", "연도 모름", y || "")}${years.map(v => opt(v, v + "년", y)).join("")}</select>
     <select class="sel" data-p="m" aria-label="월"${y ? "" : " disabled"}>${opt("", "월 모름", m || "")}${[...Array(12)].map((_, i) => opt(pad(i + 1), (i + 1) + "월", m)).join("")}</select>
     <select class="sel" data-p="d" aria-label="일"${m ? "" : " disabled"}>${opt("", "일 모름", d || "")}${[...Array(dim)].map((_, i) => opt(pad(i + 1), (i + 1) + "일", d)).join("")}</select>
   </span>`;
