@@ -1,10 +1,10 @@
 // media-log-mcp — 감상 기록(책·영화·드라마·게임·콘서트) 읽기 전용 MCP + 요약 API.
-// 데이터: 비공개 레포 media-data의 data.json (구조는 ../../DATA.md, version 4).
+// 데이터: 비공개 레포 media-data의 data.json (구조는 ../../DATA.md, version 5).
 // 약속(도구 이름·인자·API 모양)은 home-system 저장소 services/media-log.md가 원본이다.
 // 바꾸면 그 문서와 CHANGELOG, Agent Workshop 중계 목록을 같이 고쳐야 한다.
 
 const SERVER = { name: "media-log-mcp", version: "1.0.0" };
-const KNOWN_VERSION = 4;
+const KNOWN_VERSION = 5;
 const PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const KINDS = ["book", "movie", "drama", "game", "concert"];
 const STATUSES = ["wish", "doing", "done"];
@@ -56,7 +56,7 @@ function prepare(raw) {
     epsBy.get(e.itemId).push(e);
   }
   for (const list of epsBy.values()) list.sort(epSort);
-  return { version: +d.version || 1, updatedAt: d.updatedAt || null, items, episodes, epsBy };
+  return { version: +d.version || 1, updatedAt: d.updatedAt || null, items, episodes, epsBy, concertOptions: d.concertOptions || { artists: [], venues: [], ticketVendors: [] } };
 }
 
 const isNum = (v) => typeof v === "number" && !isNaN(v);
@@ -76,6 +76,7 @@ function epAvg(data, x) {
   return r.length ? round1(mean(r)) : null;
 }
 function scoreOf(data, x) {
+  if (x.kind === "concert") return { score: null, scoreFrom: null };
   if (isNum(x.rating)) return { score: x.rating, scoreFrom: "own" };
   const a = x.kind === "drama" ? epAvg(data, x) : null;
   return a !== null ? { score: a, scoreFrom: "episodes" } : { score: null, scoreFrom: null };
@@ -90,7 +91,7 @@ function view(data, x, full) {
     id: x.id, kind: x.kind, kindKo: KIND_KO[x.kind] || x.kind,
     status: x.status, statusKo: STATUS_KO[x.status] || x.status,
     title: x.title, creator: x.creator || "", year: x.year || "",
-    rating: isNum(x.rating) ? x.rating : null, score, scoreFrom,
+    rating: x.kind === "concert" ? null : isNum(x.rating) ? x.rating : null, score, scoreFrom,
     started: x.started || "", date: x.date || "", recordYear: x.status === "wish" ? null : yearOf(x) || null,
     where: Array.isArray(x.where) ? x.where : [],
     review: full ? (x.review || "") : clip(x.review, 160),
@@ -98,7 +99,8 @@ function view(data, x, full) {
     episodeCount: eps.length,
     added: iso(x.added), updated: iso(x.updated || x.added)
   };
-  if (x.kind === "concert") out.concert = Object.fromEntries(["eventType", "schedule", "attendance", "ticketVendor", "eventLink", "sourceUrl"].map(k => [k, x[k] || ""]));
+  if (x.kind === "concert") out.concert = Object.fromEntries(["eventType", "schedule", "attendance", "ticketVendor", "eventLink", "sourceUrl", "artistId", "ticketVendorId"].map(k => [k, x[k] || ""]));
+  if (x.kind === "concert") out.concert.venueIds = Array.isArray(x.venueIds) ? x.venueIds : [];
   if (full) {
     out.cover = x.cover || "";
     out.tmdbId = x.tmdbId || null;
@@ -361,6 +363,7 @@ export default {
         const kinds = Object.fromEntries(KINDS.map(k => [k, data.items.filter(x => x.kind === k).length]));
         return json({
           version: data.version,
+          concertOptions: data.concertOptions,
           updatedAt: iso(data.updatedAt),
           total: data.items.length,
           episodes: data.episodes.length,

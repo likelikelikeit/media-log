@@ -441,6 +441,13 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
   .lrow .cover{width:40px}
   .wrow{gap:12px;padding:12px}
 }
+.concert-table-wrap{overflow-x:auto;max-width:100%;border:1px solid var(--sep);border-radius:10px}
+.concert-table{width:100%;min-width:990px;border-collapse:collapse;text-align:left;font-size:13px}
+.concert-table th{color:var(--text-2);font-weight:550;background:var(--chip);white-space:nowrap;padding:10px 12px;border-bottom:1px solid var(--sep)}
+.concert-table td{padding:11px 12px;border-bottom:1px solid var(--sep);vertical-align:top;max-width:260px;overflow-wrap:anywhere}
+.concert-table tr:last-child td{border-bottom:0}.concert-table tbody tr:hover{background:var(--chip)}
+.concert-open{text-align:left;font-weight:600;min-width:230px;max-width:330px;line-height:1.45}
+.entity-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.entity-list{display:grid;gap:8px;margin:16px 0}.entity-list span{padding:8px 10px;border-bottom:1px solid var(--sep)}
 </style>
 
 <div class="bar">
@@ -544,7 +551,7 @@ const KEY = "media_log_v1";
 const SNAP_KEYS = ["media_snap_0", "media_snap_1", "media_snap_2"];
 const SNAP_META = "media_snap_meta";
 const LAYOUT_KEY = "media_layout";
-const VERSION = 4;
+const VERSION = 5;
 
 /* 종류별 말. 상태는 wish(위시) → doing(하는 중) → done(완료) */
 const KINDS = {
@@ -765,6 +772,7 @@ function stampUpdated() {
 }
 function save(immediate) {
   if (tooNew) { setSave(statusText()); toast("새 버전 데이터입니다. 페이지를 새로고침해 주세요."); return; }
+  syncConcertOptions(db);
   stampUpdated();
   db.updatedAt = now();
   dirty = true;
@@ -958,7 +966,7 @@ function undo() {
 }
 
 /* ==================== 정규화 · 마이그레이션 ====================
-   data.json 구조 (version 4)
+   data.json 구조 (version 5)
    { version, updatedAt, settings: {theme},
      items: [{ id, kind: book|movie|drama|game|concert, status: wish|doing|done,
                title, creator, year(작품 연도), cover,
@@ -982,6 +990,7 @@ function migrate(d) {
   if (v < 3) { if (!Array.isArray(d.episodes)) d.episodes = []; d.version = 3; }
   // v3 → v4: 콘서트 종류와 공연 메타데이터. 기존 기록은 그대로 유지한다.
   if (v < 4) d.version = 4;
+  if (v < 5) { syncConcertOptions(d); d.version = 5; }
   return d;
 }
 function normalize(d) {
@@ -997,6 +1006,7 @@ function normalize(d) {
   for (const x of d.items || []) if (x && String(x.title || "").trim()) out.items.push(mkItem(x));
   const ids = new Set(out.items.map(x => x.id));
   for (const e of d.episodes || []) if (e && ids.has(e.itemId)) out.episodes.push(mkEp(e));
+  syncConcertOptions(out);
   return out;
 }
 const cleanDate = (v) => { v = String(v || "").trim(); return DATE_RE.test(v) ? v : ""; };
@@ -1010,6 +1020,97 @@ function mkEp(e) {
     added: +e.added || now(), updated: +e.updated || +e.added || now()
   });
 }
+
+/* 콘서트 아티스트·공연장·예매처는 고유 id가 있는 개체로 저장한다. */
+const CONCERT_OPTION_LABELS = { artists: "아티스트", venues: "공연장", ticketVendors: "예매처" };
+const DEFAULT_CONCERT_VENUES = ["티켓링크 라이브 아레나", "장충체육관", "KSPO DOME", "서울종합운동장 실내체육관", "인스파이어 아레나", "고려대학교 화정체육관"];
+const DEFAULT_TICKET_VENDORS = ["멜론 티켓", "NOL 티켓 (구 인터파크 티켓)", "티켓링크"];
+function concertOptionName(group, name) {
+  name = String(name || "").trim();
+  if (group === "venues") {
+    if (/^티켓링크 라이브 아레나(?:\s*\(.*\))?$/.test(name)) return "티켓링크 라이브 아레나";
+    if (name.toLowerCase() === "kspo dome") return "KSPO DOME";
+  }
+  return name;
+}
+function ensureConcertOption(data, group, name) {
+  name = concertOptionName(group, name);
+  if (!name) return null;
+  data.concertOptions = data.concertOptions || {};
+  const list = data.concertOptions[group] = Array.isArray(data.concertOptions[group]) ? data.concertOptions[group] : [];
+  const found = list.find(o => concertOptionName(group, o.name) === name);
+  if (found) return found;
+  let h = 2166136261;
+  for (const ch of group + ":" + name) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  const base = "co_" + h.toString(36);
+  let id = base, i = 1;
+  while (list.some(o => o.id === id)) id = base + "_" + i++;
+  const entity = { id, name };
+  list.push(entity);
+  return entity;
+}
+function syncConcertOptions(data) {
+  data.concertOptions = data.concertOptions || {};
+  for (const group of ["artists", "venues", "ticketVendors"]) {
+    const raw = data.concertOptions[group] || [];
+    data.concertOptions[group] = [];
+    for (const o of raw) {
+      if (!o || !o.id || !o.name) continue;
+      const name = concertOptionName(group, o.name);
+      if (!data.concertOptions[group].some(y => y.id === o.id || y.name === name)) data.concertOptions[group].push({ ...o, name });
+    }
+  }
+  for (const name of DEFAULT_CONCERT_VENUES) ensureConcertOption(data, "venues", name);
+  for (const name of DEFAULT_TICKET_VENDORS) ensureConcertOption(data, "ticketVendors", name);
+  for (const x of data.items || []) if (x.kind === "concert") {
+    const artist = ensureConcertOption(data, "artists", x.creator);
+    const vendor = ensureConcertOption(data, "ticketVendors", x.ticketVendor);
+    const venues = [...new Set((x.where || []).map(name => concertOptionName("venues", name)).filter(Boolean))].map(name => ensureConcertOption(data, "venues", name));
+    x.artistId = artist ? artist.id : "";
+    x.ticketVendorId = vendor ? vendor.id : "";
+    x.venueIds = venues.map(v => v.id);
+    x.where = venues.map(v => v.name);
+    x.rating = null;
+  }
+  return data;
+}
+function concertOptions(group) { syncConcertOptions(db); return db.concertOptions[group]; }
+function entitySelectHTML(group, field, value) {
+  return `<div class="entity-line"><select class="sel" data-f="${field}" aria-label="${CONCERT_OPTION_LABELS[group]}"><option value="">미정</option>${concertOptions(group).map(o => `<option value="${esc(o.name)}"${o.name === value ? " selected" : ""}>${esc(o.name)}</option>`).join("")}</select>
+    <button type="button" class="btn sm" data-option-group="${group}">+ 등록</button></div>`;
+}
+function concertVenueHTML(list) {
+  return `${list.length ? `<div class="pills">${list.map(w => `<span class="pill">${esc(w)}<button type="button" class="px" data-w="${esc(w)}" aria-label="${esc(w)} 빼기">×</button></span>`).join("")}</div>` : ""}
+    <div class="entity-line" style="margin-top:8px"><select class="sel venuePick" aria-label="공연장 선택"><option value="">공연장 선택</option>${concertOptions("venues").filter(o => !list.includes(o.name)).map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select><button type="button" class="btn sm venueManage">+ 공연장 등록</button></div>`;
+}
+function openConcertOptions(group = "artists", fromForm = false) {
+  let back = null;
+  if (fromForm && form) { saveDraft(); const all = drafts(); all[draftKey(form)] = { at: now(), f: JSON.parse(formSnap(form)) }; LS.set(DRAFT_KEY, JSON.stringify(all)); back = form.editing ? { editing: item(form.editing) } : { kind: form.kind, status: form.status }; form = null; }
+  el.dlg.className = "dlg show k-concert";
+  el.dlgTitle.textContent = "콘서트 옵션 관리";
+  el.dlgBody.innerHTML = `<div class="seg" id="optionGroup">${Object.entries(CONCERT_OPTION_LABELS).map(([k,v]) => `<button type="button" data-group="${k}">${v}</button>`).join("")}</div><div class="entity-list" id="entityList"></div>
+    <label class="field"><span id="entityLabel">새 이름</span><input id="entityName" placeholder="등록할 이름"></label><div class="rate-actions"><button class="btn primary" id="entityAdd">등록</button><button class="btn" id="entityBack">${back ? "기록으로 돌아가기" : "닫기"}</button></div><p class="hint" id="entityHint"></p>`;
+  const paint = () => { $("#entityLabel").textContent = CONCERT_OPTION_LABELS[group] + " 등록"; $("#entityList").innerHTML = concertOptions(group).map(o => `<span>${esc(o.name)}</span>`).join(""); $$("#optionGroup button").forEach(b => b.classList.toggle("on", b.dataset.group === group)); };
+  $$("#optionGroup button").forEach(b => b.onclick = () => { group = b.dataset.group; paint(); });
+  $("#entityAdd").onclick = () => {
+    const name = concertOptionName(group, $("#entityName").value);
+    if (!name) { $("#entityName").focus(); return; }
+    const exists = concertOptions(group).some(o => o.name === name);
+    ensureConcertOption(db, group, name); save(true);
+    if (back) {
+      const key = back.editing ? back.editing.id : "new", all = drafts(), draft = all[key];
+      if (draft && draft.f) { if (group === "artists") draft.f.creator = name; else if (group === "ticketVendors") draft.f.ticketVendor = name; else draft.f.where = [...new Set([...(draft.f.where || []), name])]; LS.set(DRAFT_KEY, JSON.stringify(all)); }
+    }
+    $("#entityName").value = ""; $("#entityHint").textContent = exists ? "이미 등록된 옵션입니다." : "등록했습니다."; paint();
+  };
+  $("#entityName").onkeydown = e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $("#entityAdd").click(); } };
+  $("#entityBack").onclick = () => { if (back) openForm(back); else { closeDlg(); render(); if (ui.sheet) renderSheet(); } };
+  paint(); openDlg();
+}
+function concertTableHTML(list) {
+  return `<div class="concert-table-wrap" tabindex="0" aria-label="콘서트 기록 표 · 가로로 스크롤"><table class="concert-table"><thead><tr><th>관람일</th><th>공연</th><th>아티스트</th><th>구분</th><th>관람 회차</th><th>공연장</th><th>예매처</th><th>비고</th></tr></thead><tbody>${list.map(x => `<tr><td>${esc(fmtDate(x.date) || "연도 모름")}</td><td><button class="concert-open" data-id="${x.id}">${esc(x.title)}</button></td><td>${esc(x.creator || "미정")}</td><td>${esc(x.eventType || "미정")}</td><td>${esc(x.attendance || "–")}</td><td>${esc(x.where.join(" · ") || "미정")}</td><td>${esc(x.ticketVendor || "미정")}</td><td>${esc(x.memo)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
 function mkItem(x) {
   // 구버전 화면이 새 종류를 book으로 바꿔 로컬 저장한 Notion 공연 기록을 복구한다.
   const kind = x.kind === "book" && x.sourceUrl && EVENT_TYPES.includes(x.eventType) ? "concert" : x.kind;
@@ -1024,7 +1125,7 @@ function mkItem(x) {
     creator: String(x.creator || "").trim(),
     year: String(x.year || "").trim(),
     cover: String(x.cover || "").trim(),
-    rating: isNum(x.rating) ? snap(x.rating) : null,
+    rating: kind === "concert" ? null : isNum(x.rating) ? snap(x.rating) : null,
     review: String(x.review || ""),
     started: dt(x.started),
     date: dt(x.date),
@@ -1057,7 +1158,7 @@ function epAvg(x) {
   const r = epsOf(x).map(e => e.rating).filter(isNum);
   return r.length ? Math.round(mean(r) * 10) / 10 : null;
 }
-const scoreOf = (x) => isNum(x.rating) ? x.rating : epAvg(x);
+const scoreOf = (x) => x.kind === "concert" ? null : isNum(x.rating) ? x.rating : epAvg(x);
 const epLabel = (e) => e.season != null && e.no != null ? `S${e.season}·E${e.no}` : e.no != null ? `${e.no}화` : e.season != null ? `시즌 ${e.season}` : "";
 const whereSuggestions = (kind, have) => WHERE_SUG[kind].filter(w => !have.includes(w));
 
@@ -1314,6 +1415,7 @@ function countText(list, unit) {
   return `${list.length}${unit}${r.length ? ` · 평균 ${fmt(mean(r))}` : ""}`;
 }
 function renderRecords() {
+  if (ui.view === "concerts" && ui.sort === "rating") ui.sort = "date";
   const F = FAMS[ui.view];
   const kinds = recordKinds();
   const q = ui.q.trim().toLowerCase();
@@ -1331,7 +1433,8 @@ function renderRecords() {
   const sub = famAll.length
     ? `${thisYear}년에 <b>${yearN}${F.unit}</b> ${F.past}${doingN ? ` · 지금 ${doingN}${F.unit} ${F.doing}` : ""}`
     : "";
-  const block = (g) => ui.layout === "list" ? `<div class="list">${g.map(rowHTML).join("")}</div>` : `<div class="grid">${g.map(cardHTML).join("")}</div>`;
+  if (ui.view === "concerts" && ui.sort === "rating") ui.sort = "date";
+  const block = (g) => ui.view === "concerts" ? concertTableHTML(g) : ui.layout === "list" ? `<div class="list">${g.map(rowHTML).join("")}</div>` : `<div class="grid">${g.map(cardHTML).join("")}</div>`;
 
   let body = "";
   if (!list.length) {
@@ -1358,21 +1461,21 @@ function renderRecords() {
 
   el.wrap.innerHTML = `
     <header class="phead"><div><h1>${F.title}</h1>${sub ? `<p>${sub}</p>` : ""}</div></header>
-    ${famAll.length ? `<div class="toolbar">
+    ${famAll.length || ui.view === "concerts" ? `<div class="toolbar">
       ${ui.view === "screen" ? `<div class="seg sm" id="subSeg">
         <button data-s="all">전체</button><button data-s="movie">영화</button><button data-s="drama">드라마</button></div>` : ""}
       ${ui.view === "concerts" ? `<select class="sel" id="concertTypeSel" aria-label="공연 구분"><option value="">모든 공연</option>${[...new Set(all.map(x => x.eventType).filter(Boolean))].map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}</select>
       <select class="sel" id="artistSel" aria-label="아티스트"><option value="">모든 아티스트</option>${[...new Set(all.map(x => x.creator).filter(Boolean))].sort().map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}</select>` : ""}
       <select class="sel" id="sortSel" aria-label="정렬">
-        <option value="date">${ui.view === "games" ? "시작한 날 순" : "최근 순"}</option><option value="rating">점수 높은 순</option><option value="title">제목순</option>
+        <option value="date">${ui.view === "games" ? "시작한 날 순" : "최근 순"}</option>${ui.view === "concerts" ? "" : `<option value="rating">점수 높은 순</option>`}<option value="title">제목순</option>
       </select>
       <select class="sel" id="yearSel" aria-label="연도">
         <option value="all">모든 해</option>${years.map(y => `<option value="${y}">${y ? y + "년" : "연도 모름"}</option>`).join("")}
       </select>
-      <div class="seg sm" id="layoutSeg">
+      ${ui.view === "concerts" ? `<button class="btn sm" id="manageConcertOptions">옵션 관리</button>` : `<div class="seg sm" id="layoutSeg">
         <button data-l="grid" aria-label="격자로 보기" title="격자"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg></button>
         <button data-l="list" aria-label="목록으로 보기" title="목록 · 감상과 함께"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
-      </div>
+      </div>`}
       <span class="count">${countText(list, F.unit)}${all.length !== list.length ? ` / ${all.length}${F.unit}` : ""}</span>
     </div>` : ""}
     ${doingHTML(doing, F)}
@@ -1388,7 +1491,8 @@ function renderRecords() {
   for (const [id, key] of [["concertTypeSel", "concertType"], ["artistSel", "artist"]]) { const sel = $("#" + id); if (sel) { sel.value = ui[key]; sel.onchange = () => { ui[key] = sel.value; renderRecords(); }; } }
   const ss = $("#sortSel"); if (ss) { ss.value = ui.sort; ss.onchange = () => { ui.sort = ss.value; renderRecords(); }; }
   const ys = $("#yearSel"); if (ys) { ys.value = ui.year; ys.onchange = () => { ui.year = ys.value; renderRecords(); }; }
-  $$(".card,.lrow", el.wrap).forEach(c => c.onclick = () => openSheet(c.dataset.id));
+  if ($("#manageConcertOptions")) $("#manageConcertOptions").onclick = () => openConcertOptions();
+  $$(".card,.lrow,.concert-open", el.wrap).forEach(c => c.onclick = () => openSheet(c.dataset.id));
   $$(".dcard", el.wrap).forEach(c => {
     c.onclick = (e) => { if (!e.target.closest(".dfin")) openSheet(c.dataset.id); };
     c.onkeydown = (e) => { if (e.key === "Enter" && e.target === c) openSheet(c.dataset.id); };
@@ -1549,6 +1653,7 @@ function autoGrow(ta) {
 
 /* 볼 수 있는 곳 편집기: 지금 붙은 꼬리표 + 후보 + 직접 입력 */
 function whereEditorHTML(list, kind) {
+  if (kind === "concert") return concertVenueHTML(list);
   return `
     ${list.length ? `<div class="pills">${list.map(w => `<span class="pill">${esc(w)}<button type="button" class="px" data-w="${esc(w)}" aria-label="${esc(w)} 빼기">×</button></span>`).join("")}</div>` : ""}
     <div class="marks">${whereSuggestions(kind, list).map(w => `<button type="button" class="mark wsug" data-w="${esc(w)}">+ ${esc(w)}</button>`).join("")}</div>
@@ -1561,6 +1666,12 @@ function bindWhereEditor(root, getList, setList) {
   const add = (w) => { w = String(w || "").trim(); if (!w || getList().includes(w)) return; setList([...getList(), w]); };
   $$(".px", root).forEach(b => b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setList(getList().filter(w => w !== b.dataset.w)); });
   $$(".wsug", root).forEach(b => b.onclick = (e) => { e.preventDefault(); add(b.dataset.w); });
+  const venue = $(".venuePick", root);
+  if (venue) {
+    venue.onchange = () => { const opt = concertOptions("venues").find(o => o.id === venue.value); if (opt) add(opt.name); };
+    $(".venueManage", root).onclick = () => openConcertOptions("venues", !!form);
+    return;
+  }
   const inp = $(".wIn", root);
   const addTyped = () => { const v = inp.value; inp.value = ""; v.split(/\s*,\s*/).forEach(add); };
   $(".wAdd", root).onclick = (e) => { e.preventDefault(); addTyped(); };
@@ -1770,7 +1881,7 @@ function renderSheet() {
     </div>` : ""}
 
     ${st !== "wish" ? `
-    <div class="sec">
+    ${x.kind === "concert" ? "" : `<div class="sec">
       <h3>점수${st === "doing" ? " · 지금까지" : ""}</h3>
       <div class="raterow">
         <span class="bigscore" id="bigVal" style="color:${hue(x.rating)}" tabindex="0" role="slider" aria-valuemin="0.5" aria-valuemax="10" aria-label="점수">${isNum(x.rating) ? fmt(x.rating) : "–"}<span class="of">/10</span></span>
@@ -1781,7 +1892,7 @@ function renderSheet() {
         <button type="button" class="btn sm" id="clearRate" aria-pressed="${!isNum(x.rating)}">평가 안 함</button>
         <span class="hint" id="rateHint">${rateHint(x)}</span>
       </div>
-    </div>
+    </div>`}
 
     <div class="sec">
       <h3>감상</h3>
@@ -1830,6 +1941,7 @@ function renderSheet() {
   if ($("#goStart")) $("#goStart").onclick = () => setStatus(x, "doing");
   if ($("#goFinish")) $("#goFinish").onclick = () => finish(x);
   if (st !== "wish") {
+    if (x.kind !== "concert") {
     const rng = $("#rng"), num = $("#numVal"), bigv = $("#bigVal");
     const apply = (v, from) => {
       x.rating = v;
@@ -1845,6 +1957,7 @@ function renderSheet() {
     };
     bindRangePair(rng, num, () => x.rating, apply, $("#clearRate"));
     bindScore(bigv, () => x.rating, (v) => apply(v, "big"));
+    }
     $("#rev").addEventListener("input", (e) => { x.review = e.target.value; save(); });
     bindDateField("startIn", () => x.started, (v) => { x.started = v; save(); });
     if ($("#dateIn")) {
@@ -1943,7 +2056,7 @@ function openForm(o) {
 function concertFormHTML(f) {
   return `<label class="field"><span>공연 일시</span><input data-f="schedule" value="${esc(f.schedule)}" placeholder="예: 2026. 5. 2 ~ 3 · 오후 6시"></label>
     <label class="field"><span>관람 회차</span><input data-f="attendance" value="${esc(f.attendance)}" placeholder="예: 양일 / 토요일만 / 일요일은 온라인"></label>
-    <label class="field"><span>예매처</span><input data-f="ticketVendor" value="${esc(f.ticketVendor)}" list="ticketVendors"><datalist id="ticketVendors"><option value="멜론 티켓"><option value="NOL 티켓 (구 인터파크 티켓)"><option value="티켓링크"><option value="YES24 티켓"></datalist></label>
+    <label class="field"><span>예매처</span>${entitySelectHTML("ticketVendors", "ticketVendor", f.ticketVendor)}</label>
     <label class="field"><span>공연 정보 링크</span><input data-f="eventLink" value="${esc(f.eventLink)}" placeholder="공식 페이지·나무위키 등" autocapitalize="off"></label>
     <label class="field"><span>비고</span><textarea class="review" data-f="memo" rows="2" placeholder="온라인 시청, 좌석, 기억할 것 등">${esc(f.memo)}</textarea></label>
     <p class="hint">공연명은 직접 적습니다. 여러 날 관람했다면 아래 관람일에는 첫 관람일을, 관람 회차에는 전체 일정을 적어 주세요.</p>`;
@@ -1972,14 +2085,14 @@ function renderForm() {
     ${isScreen(f.kind) && !canSearch(f.kind) ? `<p class="hint acnote">TMDB 키를 넣으면 제목만 쳐도 감독·연도·포스터가 나옵니다 · <button type="button" class="linkbtn" id="fKeys">검색 설정</button></p>` : ""}
     ${f.kind === "game" ? `<p class="hint acnote">${canSearch(f.kind) ? "게임명으로 검색해 후보를 고르면 연도·표지가 채워집니다. 결과가 없으면 영문 제목으로도 찾아보세요." : `RAWG 키를 넣으면 게임 제목으로 검색하고 표지를 가져올 수 있습니다 · <button type="button" class="linkbtn" id="fKeys">검색 설정</button>`}</p>` : ""}
     <div class="two">
-      <label class="field"><span>${k.who}</span><input data-f="creator" value="${esc(f.creator)}" autocomplete="off"></label>
+      <label class="field"><span>${k.who}</span>${f.kind === "concert" ? entitySelectHTML("artists", "creator", f.creator) : `<input data-f="creator" value="${esc(f.creator)}" autocomplete="off">`}</label>
       ${f.kind === "concert" ? `<label class="field"><span>공연 구분</span><select class="sel" data-f="eventType"><option value="">미정</option>${EVENT_TYPES.map(t => `<option value="${t}"${f.eventType === t ? " selected" : ""}>${t}</option>`).join("")}</select></label>` : `<label class="field"><span>작품 연도</span><input data-f="year" value="${esc(f.year)}" inputmode="numeric" placeholder="예: 2024" autocomplete="off"></label>`}
     </div>
     ${f.kind === "concert" ? concertFormHTML(f) : ""}
     ${st === "done" ? `
       <div>
         ${f.kind === "game" ? `<div class="field"><span>시작한 날</span>${dateFieldHTML("fStarted", f.started)}</div>` : `<div class="field"><span>${k.endDate}</span>${dateFieldHTML("fDate", f.date)}</div>`}
-        <div class="field"><span>점수</span>
+        ${f.kind === "concert" ? "" : `<div class="field"><span>점수</span>
           <div class="raterow sm">
             <div class="rangewrap"><input type="range" id="fRng" min="0.5" max="10" step="0.5" value="${f.rating ?? 0.5}" aria-label="점수 슬라이더"></div>
             <input class="numin" id="fNum" inputmode="decimal" value="${isNum(f.rating) ? fmt(f.rating) : ""}" placeholder="–" aria-label="점수 입력">
@@ -1988,7 +2101,7 @@ function renderForm() {
             <button type="button" class="btn sm" id="fNoRate">평가 안 함</button>
             <span class="hint">점수 없이 감상만 남겨도 됩니다.</span>
           </div>
-        </div>
+        </div>`}
       </div>
       <label class="field"><span>감상</span><textarea class="review" data-f="review" rows="4" placeholder="어땠는지 자유롭게 적어 두세요. 한 줄이어도, 아주 길어도 괜찮아요.">${esc(f.review)}</textarea></label>`
     : st === "doing" ? `
@@ -2021,10 +2134,11 @@ function renderForm() {
     const x = f.editing ? item(f.editing) : null;
     openForm(x ? { editing: x, fresh: true } : { kind: f.kind, status: f.status, fresh: true });
   };
-  if (st === "done") bindRangePair($("#fRng"), $("#fNum"), () => f.rating, (v) => { f.rating = v; saveDraft(); }, $("#fNoRate"));
+  if (st === "done" && f.kind !== "concert") bindRangePair($("#fRng"), $("#fNum"), () => f.rating, (v) => { f.rating = v; saveDraft(); }, $("#fNoRate"));
   bindDateField("fDate", () => f.date, (v) => { f.date = v; saveDraft(); });
   bindDateField("fStarted", () => f.started, (v) => { f.started = v; saveDraft(); });
   bindWhereEditor($("#fWhere"), () => f.where, (list) => { f.where = list; renderForm(); });
+  $$("[data-option-group]", el.dlgBody).forEach(b => b.onclick = () => openConcertOptions(b.dataset.optionGroup, true));
   bindSuggest();
   if ($("#fKeys")) $("#fKeys").onclick = () => openSearchConfig(true);
   $("#fSave").onclick = submitForm;
@@ -2127,9 +2241,9 @@ function submitForm() {
   dropDraft(draftKey(f));
   const fields = { kind: f.kind, title, creator: f.creator.trim(), year: f.year.trim(), cover: f.cover.trim(), where: f.where, tmdbId: f.kind === "drama" ? f.tmdbId : null };
   for (const key of CONCERT_FIELDS) fields[key] = f[key] || "";
-  if (f.kind === "concert") fields.memo = f.memo;
+  if (f.kind === "concert") { fields.memo = f.memo; fields.rating = null; }
   if (f.status === "done") {
-    Object.assign(fields, { rating: f.rating, review: f.review });
+    Object.assign(fields, { rating: f.kind === "concert" ? null : f.rating, review: f.review });
     if (f.kind === "game") fields.started = f.started;
     else fields.date = f.date;
   }
@@ -2293,6 +2407,7 @@ async function ingest(incoming, name) {
     toast(`${name} · ${db.items.length}개를 불러왔습니다`);
     return;
   }
+  for (const group of ["artists", "venues", "ticketVendors"]) for (const o of inc.concertOptions[group]) ensureConcertOption(db, group, o.name);
   const byId = new Map(db.items.map(x => [x.id, x]));
   const byKey = new Map(db.items.map(x => [sameKey(x), x]));
   let add = 0, upd = 0;
@@ -2302,7 +2417,7 @@ async function ingest(incoming, name) {
     if (cur) {
       if (isNum(x.rating)) cur.rating = x.rating;
       if (x.review) cur.review = x.review;
-      for (const f of ["started", "date", "cover", "year", "creator", "memo"]) if (x[f] && !cur[f]) cur[f] = x[f];
+      for (const f of ["started", "date", "cover", "year", "creator", "memo", ...CONCERT_FIELDS]) if (x[f] && !cur[f]) cur[f] = x[f];
       cur.where = [...new Set([...cur.where, ...x.where])];
       idMap.set(x.id, cur.id);
       if (RANK[x.status] > RANK[cur.status]) cur.status = x.status;
@@ -2769,6 +2884,7 @@ window.addEventListener("online", () => { if (ghOn()) pull(true); });
 
 /* ==================== 시작 ==================== */
 (async function init() {
+  syncConcertOptions(db);
   ui.layout = LS.get(LAYOUT_KEY) === "list" ? "list" : "grid";
   loadKeys();
   applyTheme();

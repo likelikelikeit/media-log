@@ -182,3 +182,17 @@ test("게임 기록 연도는 시작일, 없는 연도는 추정하지 않는다
   assert.equal((await call("media_get",{id:"g1"})).item.recordYear,"2020");
   assert.equal((await call("media_get",{id:"m3"})).item.recordYear,null);
 });
+
+test("콘서트 개체 참조·옵션 보존, 콘서트는 점수 계산에서 제외", async () => {
+  const data = structuredClone(DATA);
+  data.version = 5;
+  data.concertOptions = {artists:[{id:"a1",name:"Artist"}],venues:[{id:"v1",name:"Venue"}],ticketVendors:[{id:"t1",name:"Vendor"}]};
+  data.items.push({id:"c2",kind:"concert",status:"done",title:"Concert",creator:"Artist",where:["Venue"],ticketVendor:"Vendor",artistId:"a1",venueIds:["v1"],ticketVendorId:"t1",rating:9,date:"2024"});
+  globalThis.fetch = async () => new Response(JSON.stringify(data));
+  const r = (await call("media_get",{id:"c2"})).item;
+  assert.equal(r.score,null); assert.equal(r.rating,null);
+  assert.equal(r.concert.artistId,"a1"); assert.deepEqual(r.concert.venueIds,["v1"]);
+  assert.equal((await call("media_stats",{kind:"concert"})).rated,0);
+  const summary = await (await req("/api/summary",{headers:AUTH})).json();
+  assert.deepEqual(summary.concertOptions,data.concertOptions);
+});

@@ -5,15 +5,16 @@
 
 - 위치: 비공개 레포 `likelikelikeit/media-data`, 브랜치 `main`, 파일 `data.json`
 - 읽기: GitHub Contents API `GET /repos/likelikelikeit/media-data/contents/data.json` → `content`(base64, UTF-8)를 풀어 JSON으로 읽는다. 응답의 `sha`는 쓸 때 필요하다.
-- 지금 버전: **4**
+- 지금 버전: **5**
 
 ## 최상위
 
 ```jsonc
 {
-  "version": 4,
+  "version": 5,
   "updatedAt": 1760600000000,   // 마지막 저장 시각(ms). 기기끼리 누가 더 최신인지 이 값으로 가린다
   "settings": { "theme": "auto" },
+  "concertOptions": { "artists": [], "venues": [], "ticketVendors": [] },
   "items": [ /* 작품 */ ],
   "episodes": [ /* 드라마 에피소드 */ ]
 }
@@ -42,7 +43,7 @@
 
 `where`에 자주 오는 값: 도서 `서점` `밀리의서재` `도서관 및 학교` `기타` / 영화·드라마 `넷플릭스` `극장` `TV` `유료 대여 및 구매` `기타` / 게임 `스팀` `모바일`. 직접 입력한 값도 올 수 있다.
 
-## 콘서트 (version 4)
+## 콘서트 (version 5)
 
 - `kind: concert`, `status: done`만 쓴다. 콘서트에는 위시리스트가 없다.
 - `title`: 공연명, `creator`: 아티스트, `where`: 공연장 또는 온라인 서비스.
@@ -50,8 +51,11 @@
 - `eventType`: 콘서트·팬 콘서트·팬미팅·기타, `schedule`: 공연 기간·시간 원문.
 - `attendance`: 양일, 특정 날짜 등 관람 회차 원문, `ticketVendor`: 예매처.
 - `eventLink`: 공연 정보 URL, `sourceUrl`: 가져온 Notion 원본 URL. 모두 문자열, 없으면 빈 문자열.
-- `memo`: 온라인 시청 등 비고, `review`: 감상. 평가는 선택이며 `rating: null`을 허용한다.
+- `memo`: 온라인 시청 등 비고, `review`: 감상. 콘서트에는 점수 시스템이 없으며 `rating`은 항상 `null`이다.
 - v3 → v4는 기존 기록을 그대로 보존하고 새 종류·문자열 필드를 추가한다.
+- v4 → v5는 `concertOptions`를 만들고 기존 아티스트·공연장·예매처를 `{id, name}` 개체로 등록한다. 콘서트의 `artistId`, `venueIds`(배열), `ticketVendorId`가 각 개체를 참조한다.
+- `creator`, `where`, `ticketVendor` 이름 필드는 호환용으로 함께 보존한다. 장소의 과거 명칭은 현재 옵션 이름으로 통일한다.
+- 콘서트 옵션은 추가·상세 화면에서 등록·선택할 수 있고 JSON 내보내기에 함께 들어간다. CSV는 사용한 이름을 보존하며, 가져올 때 개체를 다시 연결한다.
 - MCP/API는 콘서트 정보 6개 필드를 `concert` 객체로 반환한다. `doneByYear.unknown`은 연도 모름 개수다.
 
 ## episodes — 드라마 에피소드 한 편
