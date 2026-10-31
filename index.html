@@ -1926,7 +1926,7 @@ function renderForm() {
     </div>
     ${st === "done" ? `
       <div>
-        <div class="field"><span>${k.endDate}</span>${dateFieldHTML("fDate", f.date)}</div>
+        ${f.kind === "game" ? `<div class="field"><span>시작한 날</span>${dateFieldHTML("fStarted", f.started)}</div>` : `<div class="field"><span>${k.endDate}</span>${dateFieldHTML("fDate", f.date)}</div>`}
         <div class="field"><span>점수</span>
           <div class="raterow sm">
             <div class="rangewrap"><input type="range" id="fRng" min="0.5" max="10" step="0.5" value="${f.rating ?? 0.5}" aria-label="점수 슬라이더"></div>
@@ -2074,7 +2074,11 @@ function submitForm() {
   if (!title) { toast("제목을 입력해 주세요"); $("#fTitle") && $("#fTitle").focus(); return; }
   dropDraft(draftKey(f));
   const fields = { kind: f.kind, title, creator: f.creator.trim(), year: f.year.trim(), cover: f.cover.trim(), where: f.where, tmdbId: f.kind === "drama" ? f.tmdbId : null };
-  if (f.status === "done") Object.assign(fields, { date: f.date, rating: f.rating, review: f.review });
+  if (f.status === "done") {
+    Object.assign(fields, { rating: f.rating, review: f.review });
+    if (f.kind === "game") fields.started = f.started;
+    else fields.date = f.date;
+  }
   if (f.status === "doing") fields.started = f.started;
   if (f.status === "wish") fields.memo = f.memo;
   if (f.editing) {
