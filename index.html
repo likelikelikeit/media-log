@@ -102,6 +102,7 @@ input,textarea,select{font-size:16px}
 .btn.ghost:hover{background:var(--chip)}
 .btn.del{color:#c4271b}
 [data-theme="dark"] .btn.del{color:#ff6b5e}
+.btn[aria-pressed="true"]{background:var(--chip-h);box-shadow:inset 0 0 0 1px var(--sep-2)}
 .btn.sm{padding:5px 11px;font-size:13px;border-radius:9px}
 .savechip .short{display:none}
 .savechip{flex:none;font-size:12px;color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;cursor:pointer;max-width:150px}
@@ -1080,7 +1081,17 @@ function paintRange(rng, v) {
   rng.style.setProperty("--rt", `linear-gradient(to right, ${c} ${p}%, var(--field) ${p}%)`);
 }
 /* 슬라이더 + 숫자칸 한 쌍을 묶는다. onChange(v, from)은 값이 바뀔 때마다 불린다. */
-function bindRangePair(rng, num, get, onChange) {
+function bindRangePair(rng, num, get, onChange, clear) {
+  if (clear) {
+    const sync = () => clear.setAttribute("aria-pressed", String(!isNum(get())));
+    clear.onclick = () => {
+      rng.value = SC_MIN; num.value = ""; paintRange(rng, null);
+      onChange(null, "clear"); sync();
+    };
+    rng.addEventListener("input", () => setTimeout(sync, 0));
+    num.addEventListener("input", () => setTimeout(sync, 0));
+    sync();
+  }
   paintRange(rng, get());
   rng.addEventListener("input", () => { const v = snap(+rng.value); num.value = fmt(v); paintRange(rng, v); onChange(v, "rng"); });
   num.addEventListener("input", () => {
@@ -1442,7 +1453,7 @@ function finish(x) {
   if (!x) return;
   setStatus(x, "done");
   if (ui.sheet !== x.id) openSheet(x.id);
-  toast(`${KINDS[x.kind].doneSt} · 점수를 매겨 보세요`);
+  toast(`${KINDS[x.kind].doneSt} · 감상을 남겨 보세요`);
 }
 
 /* ==================== 시트 ==================== */
@@ -1559,6 +1570,7 @@ function episodesHTML(x) {
               <div class="rangewrap"><input type="range" id="epRng" min="0.5" max="10" step="0.5" value="${e.rating ?? 0.5}" aria-label="에피소드 점수 슬라이더"></div>
               <input class="numin" id="epNum" inputmode="decimal" value="${isNum(e.rating) ? fmt(e.rating) : ""}" placeholder="–" aria-label="에피소드 점수">
             </div>
+            <div class="rate-actions" style="margin:8px 0 12px"><button type="button" class="btn sm" id="epNoRate">평가 안 함</button></div>
             <textarea class="review" data-ef="review" placeholder="이 에피소드는 어땠는지">${esc(e.review)}</textarea>
             <div class="inrow"><span class="hint">본 날</span>${dateFieldHTML("epDate", e.date)}</div>
             <div class="rate-actions">
@@ -1610,7 +1622,7 @@ function bindEpisodes(x) {
     save(); repaint();
   }));
   autoGrow($('[data-ef="review"]', row));
-  bindRangePair($("#epRng"), $("#epNum"), () => e.rating, (v) => { e.rating = v; save(); repaint(); refreshEpAvg(x); });
+  bindRangePair($("#epRng"), $("#epNum"), () => e.rating, (v) => { e.rating = v; save(); repaint(); refreshEpAvg(x); }, $("#epNoRate"));
   bindDateField("epDate", () => e.date, (v) => { e.date = v; save(); });
   $("#epFold").onclick = () => { ui.openEp = null; renderSheet(); };
   $("#epDel").onclick = () => {
@@ -1734,7 +1746,7 @@ function renderSheet() {
         <input class="numin" id="numVal" inputmode="decimal" value="${isNum(x.rating) ? fmt(x.rating) : ""}" placeholder="–" aria-label="점수 입력">
       </div>
       <div class="rate-actions">
-        <button class="btn ghost sm" id="clearRate">지우기</button>
+        <button type="button" class="btn sm" id="clearRate" aria-pressed="${!isNum(x.rating)}">평가 안 함</button>
         <span class="hint" id="rateHint">${rateHint(x)}</span>
       </div>
     </div>
@@ -1781,7 +1793,7 @@ function renderSheet() {
   $$("#stSeg button").forEach(b => b.onclick = () => {
     const s = b.dataset.s;
     setStatus(x, s);
-    if (s === "done") toast(`${k.doneSt} · 점수를 매겨 보세요`);
+    if (s === "done") toast(`${k.doneSt} · 감상을 남겨 보세요`);
   });
   if ($("#goStart")) $("#goStart").onclick = () => setStatus(x, "doing");
   if ($("#goFinish")) $("#goFinish").onclick = () => finish(x);
@@ -1789,6 +1801,7 @@ function renderSheet() {
     const rng = $("#rng"), num = $("#numVal"), bigv = $("#bigVal");
     const apply = (v, from) => {
       x.rating = v;
+      $("#clearRate").setAttribute("aria-pressed", String(!isNum(v)));
       bigv.innerHTML = (isNum(v) ? fmt(v) : "–") + `<span class="of">/10</span>`;
       bigv.style.color = hue(v);
       bigv.setAttribute("aria-valuenow", isNum(v) ? v : "");
@@ -1798,9 +1811,8 @@ function renderSheet() {
       save();
       refreshEpAvg(x);
     };
-    bindRangePair(rng, num, () => x.rating, apply);
+    bindRangePair(rng, num, () => x.rating, apply, $("#clearRate"));
     bindScore(bigv, () => x.rating, (v) => apply(v, "big"));
-    $("#clearRate").onclick = () => apply(null);
     $("#rev").addEventListener("input", (e) => { x.review = e.target.value; save(); });
     bindDateField("startIn", () => x.started, (v) => { x.started = v; save(); });
     if ($("#dateIn")) {
@@ -1919,6 +1931,10 @@ function renderForm() {
             <div class="rangewrap"><input type="range" id="fRng" min="0.5" max="10" step="0.5" value="${f.rating ?? 0.5}" aria-label="점수 슬라이더"></div>
             <input class="numin" id="fNum" inputmode="decimal" value="${isNum(f.rating) ? fmt(f.rating) : ""}" placeholder="–" aria-label="점수 입력">
           </div>
+          <div class="rate-actions" style="margin-top:8px">
+            <button type="button" class="btn sm" id="fNoRate">평가 안 함</button>
+            <span class="hint">점수 없이 감상만 남겨도 됩니다.</span>
+          </div>
         </div>
       </div>
       <label class="field"><span>감상</span><textarea class="review" data-f="review" rows="4" placeholder="어땠는지 자유롭게 적어 두세요. 한 줄이어도, 아주 길어도 괜찮아요.">${esc(f.review)}</textarea></label>`
@@ -1952,7 +1968,7 @@ function renderForm() {
     const x = f.editing ? item(f.editing) : null;
     openForm(x ? { editing: x, fresh: true } : { kind: f.kind, status: f.status, fresh: true });
   };
-  if (st === "done") bindRangePair($("#fRng"), $("#fNum"), () => f.rating, (v) => { f.rating = v; saveDraft(); });
+  if (st === "done") bindRangePair($("#fRng"), $("#fNum"), () => f.rating, (v) => { f.rating = v; saveDraft(); }, $("#fNoRate"));
   bindDateField("fDate", () => f.date, (v) => { f.date = v; saveDraft(); });
   bindDateField("fStarted", () => f.started, (v) => { f.started = v; saveDraft(); });
   bindWhereEditor($("#fWhere"), () => f.where, (list) => { f.where = list; renderForm(); });
