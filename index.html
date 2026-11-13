@@ -421,8 +421,8 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
   .dscroll{margin:0 -16px;padding:2px 16px 10px}
   .dcard{flex-basis:270px}
   .wlist{grid-template-columns:1fr}
-  /* iOS는 16px보다 작은 입력칸에 초점이 가면 화면을 확대한다 */
-  .tin,.review,.numin,.field input:not([type=range]),.field textarea,.searchbox input{font-size:16px}
+  /* 작은 화면의 입력 글씨는 모두 16px 이상으로 유지한다. */
+  input:not([type=range]),textarea,select{font-size:16px !important}
 }
 @media (max-width:520px){
   .brand span{display:none}
@@ -452,6 +452,8 @@ body.modal .tabbar{opacity:0;pointer-events:none;transition:opacity .2s}
 .concert-heading h1{margin:10px 0 6px;font-size:26px;line-height:1.3;letter-spacing:-.035em;overflow-wrap:anywhere}
 .concert-heading p{margin:0;color:var(--text-2);font-size:15px}
 @media(max-width:860px){.concert-heading{padding-top:58px}.concert-heading h1{font-size:23px}}
+/* iPhone 가로 화면에서도 입력 시 자동 확대를 막는다. 수동 확대는 허용한다. */
+@supports (-webkit-touch-callout:none){input:not([type=range]),textarea,select{font-size:16px !important}}
 </style>
 
 <div class="bar">
